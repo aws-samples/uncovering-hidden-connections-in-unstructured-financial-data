@@ -150,7 +150,7 @@ $ pip install -r requirements.txt
 If this is your first time deploying your code via CDK to your AWS Account, you will need to first bootstrap your AWS account in both us-east-1 and also the region that you are deploying to.  Otherwise, you can skip this step.
 
 ```
-$ cdk bootstrap
+$ cdk bootstrap aws://<account no>/us-east-1 aws://<account no>/<aws region to deploy main application stack>
 ```
 
 Then proceed to run the below command to:
