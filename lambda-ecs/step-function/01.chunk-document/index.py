@@ -1,6 +1,6 @@
 import tempfile
 import json
-import PyPDF2
+import pypdf
 import os
 import boto3
 import uuid
@@ -61,9 +61,9 @@ Here is the document:
 def splitDocument(fileName):
     maxTokensPerChunk = 1000 # estimate 1 space = 1 word = 1 token
     
-    # read in PDF file using PyPDF2
+    # read in PDF file using pypdf
     pdfFileObj = open(fileName, 'rb')
-    pdfReader = PyPDF2.PdfReader(pdfFileObj)
+    pdfReader = pypdf.PdfReader(pdfFileObj)
     
     # get number of pages
     numPages = int(str(len(pdfReader.pages)))
