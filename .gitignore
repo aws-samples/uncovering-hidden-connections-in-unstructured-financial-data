@@ -1,0 +1,22 @@
+*.swp
+package-lock.json
+__pycache__
+.pytest_cache
+.venv
+*.egg-info
+
+# CDK asset staging directory
+.cdk.staging
+cdk.out
+
+layers/python
+ui/node_modules
+
+.DS_Store
+
+# Libraries copied from lib/ which should not be committed
+lambda-ecs/api/entities/connectionsinsights/
+lambda-ecs/api/generate-news/connectionsinsights/
+lambda-ecs/s3_pipeline/process-news/connectionsinsights/
+lambda-ecs/step-function/01.chunk-document/connectionsinsights/
+lambda-ecs/step-function/05.insert-vertices-edges/connectionsinsights/
