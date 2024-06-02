@@ -27,7 +27,7 @@ def qb_extractChunkData(text, summary, id):
 		{ "NAME": "<FULL_COMPANY_NAME>", "COMPETING_IN": "<PRODUCTS_OR_AREAS_IN_COMPETITION>", "FOCUS_AREA": "<COMPANY_BUSINESS_FOCUS_AREA>", "INDUSTRY": "<INDUSTRY>" }
 	],
 	"DIRECTORS" : [
-		{ "NAME": "<FULL_PERSON_NAME>", "ROLE": "<ROLE_IN_MAIN_ENTITY>", "OTHER_ASSOCIATIONS": [ {"ROLE": "<ROLE_IN_OTHER_ASSOCIATIONS>", "COMPANY_NAME" : "<COMPANY_NAMES>", "FOCUS_AREA": "<COMPANY_BUSINESS_FOCUS_AREA>", "INDUSTRY": "<INDUSTRY>" } ] }
+		{ "NAME": "<FULL_PERSON_NAME_EXCLUDE_TITLES>", "ROLE": "<ROLE_IN_MAIN_ENTITY>", "OTHER_ASSOCIATIONS": [ {"ROLE": "<ROLE_IN_OTHER_ASSOCIATIONS>", "COMPANY_NAME" : "<COMPANY_NAMES>", "FOCUS_AREA": "<COMPANY_BUSINESS_FOCUS_AREA>", "INDUSTRY": "<INDUSTRY>" } ] }
 	]
 }
 """
@@ -47,9 +47,19 @@ Here is the document:
 </document>
 
 Using the text enclosed within <document></document> tag, perform the following steps:
-1) Identify named commercial products or services / customers / suppliers or partners / competitors / directors of the <main_entity> and their current / prior roles with other companies within <document></document>.  Leave array empty if you cannot identify any.  For any values that you cannot determine, return empty string.
+1) Identify named commercial products or services provided by the <main_entity>. Leave array empty if you cannot identify any.  For any values that you cannot determine, return empty string.
 
-2) Print out the results in <results> tag using the following JSON format:
+2) Identify customers of the <main_entity>. Leave array empty if you cannot identify any.  For any values that you cannot determine, return empty string.
+
+3) Identify suppliers or partners of the <main_entity>. Leave array empty if you cannot identify any.  For any values that you cannot determine, return empty string.
+
+4) Identify competitors of the <main_entity>. Leave array empty if you cannot identify any.  For any values that you cannot determine, return empty string.
+
+5) Identify directors of the <main_entity> and their current / prior roles with other companies within <document></document>.  Leave array empty if you cannot identify any.  For any values that you cannot determine, return empty string.
+
+6) Be as complete as you can in your idenfication of all information, and include any mentioned information even if they were mentioned to be in the past.
+
+7) Print out the results in <results> tag using the following JSON format:
 {sampleJSON}
          """.format(main_entity=summary,text=text,sampleJSON=sampleJSON)},
          {"role":"assistant", "content": """"""}

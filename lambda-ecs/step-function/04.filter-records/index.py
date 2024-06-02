@@ -11,6 +11,9 @@ from connectionsinsights.bedrock import (
     savePrompt,
     convertMessagesToTextCompletion
 )
+  
+dynamodb_resource = boto3.resource('dynamodb')
+dynamodb = boto3.client("dynamodb")
 
 def qb_filterCustomers(customers, main_entity_name):
     if customers.strip() == "{}":
@@ -40,7 +43,7 @@ Perform the following steps:
 3. Some of the attributes may be missing due to lack of information in the source document but this does not necessarily mean that an item is not a company/conglomerate/organisation.
 4. If there are some indication that an item is a company/conglomerate/organisation even though there are limited information, you may include it as an company/conglomerate/organisation.
 5. Assess each item individually and print your explanation within <explanation> tags.
-6. Print an array containing only names of companies/conglomerates/organisations between <customers></customers> tags.  E.g. [ "COMPANY" ]
+6. After printing the explanation, print an array containing only names of companies/conglomerates/organisations between <customers></customers> tags.  E.g. [ "COMPANY" ]
 """.format(main_entity_name=main_entity_name,customers=customers,jsonFormat=jsonFormat)},
          {"role":"assistant", "content": """"""}
     ]
@@ -88,7 +91,7 @@ Perform the following steps:
 3. Some of the attributes may be missing due to lack of information in the source document but this does not necessarily mean that an item is not a company/conglomerate/organisation.
 4. If there are some indication that an item is a company/conglomerate/organisation even though there are limited information, you may include it as an company/conglomerate/organisation.
 5. Assess each item individually and print your explanation within <explanation> tags.
-6. Print an array containing only names of companies/conglomerates/organisations between <suppliers_or_partners></suppliers_or_partners> tags.  E.g. [ "COMPANY" ]
+6. After printing the explanation, print an array containing only names of companies/conglomerates/organisations between <suppliers_or_partners></suppliers_or_partners> tags.  E.g. [ "COMPANY" ]
 """.format(main_entity_name=main_entity_name,suppliers_or_partners=suppliers_or_partners,jsonFormat=jsonFormat)},
          {"role":"assistant", "content": """"""}
     ]
@@ -135,7 +138,7 @@ Perform the following steps:
 3. Some of the attributes may be missing due to lack of information in the source document but this does not necessarily mean that an item is not a company/conglomerate/organisation.
 4. If there are some indication that an item is a company/conglomerate/organisation even though there are limited information, you may include it as an company/conglomerate/organisation.
 5. Assess each item individually and print your explanation within <explanation> tags.
-6. Print an array containing only names of companies/conglomerates/organisations between <competitors></competitors> tags.  E.g. [ "COMPANY" ]
+6. After printing the explanation, print an array containing only names of companies/conglomerates/organisations between <competitors></competitors> tags.  E.g. [ "COMPANY" ]
 """.format(main_entity_name=main_entity_name,competitors=competitors,jsonFormat=jsonFormat)},
          {"role":"assistant", "content": """"""}
     ]
@@ -165,7 +168,7 @@ def qb_filterDirectors(directors, main_entity_name):
     ...
 }"""
 
-    messages_initial = [
+    messages = [
         {"role":"user", "content": """
 I will provide you with a JSON object of people who works for {main_entity_name}.
 The JSON object is in this format:
@@ -176,31 +179,18 @@ Here is the JSON object of people:
 {directors}
 </people>
 
-Some of the people listed could be named differently but are actually referring to the same person.
-Review through the people in <people> and perform the following steps:
-1. Identify those duplicates by inferring from the similarity of their names, acronyms, and also from the roles they perform.
-2. List the duplicates identified in tuples and the explanation.
-3. Among each group of duplicates, pick the most complete name to keep and remove the others from <people>.
-4. Print the updated list of people between <people> tags
+1. For each item in <people>, identify whether it has a first name and a last name and print them.
+2. Print names that have at least a first name and a last name.  Remove all other items.
+3. If a person's name have multiple variations, make sure you keep the different versions for step 4.
+4. Next, print an array containing only names of actual people between <people></people> tags.  E.g. <people>[ "PERSON_NAME1", "PERSON_NAME2", ... ]</people>
 5. You are to work with only the information provided in the context.
-        """.format(main_entity_name=main_entity_name,directors=directors,jsonFormat=jsonFormat)},
+6. Do not print codes.
+""".format(main_entity_name=main_entity_name,directors=json.dumps(json.loads(directors)),jsonFormat=jsonFormat)},
         {"role":"assistant", "content": """"""}
     ]
 
-    messages_followon = [
-        {"role":"user", "content": """
-1. Categorise each item in <people> into actual people vs others.
-2. Keep only actual people (at least with first name and last name) and remove every other categories.
-3. Print an array containing only names of actual people between <people></people> tags.  E.g. [ "PERSON_NAME" ]
-4. You are to work with only the information provided in the context.
-        """},
-        {"role":"assistant", "content": """"""}
-    ]
-
-    completion = queryBedrockStreaming(messages_initial)    
-    messages_followon = [messages_initial[0]] + [{"role":"assistant", "content": completion}] + messages_followon
-    completion = queryBedrockStreaming(messages_followon)
-    prompt_history = convertMessagesToTextCompletion(messages_followon) + "\n\n" + completion + "\n\n"
+    completion = queryBedrockStreaming(messages)    
+    prompt_history = convertMessagesToTextCompletion(messages) + "\n\n" + completion + "\n\n"
 
     savePrompt(prompt_history, id=main_entity_name+"->qb_filterDirectors")
 
@@ -210,20 +200,42 @@ Review through the people in <people> and perform the following steps:
     try:
         json.loads(response)
         return response
-    except:
+    except Exception as e:
+        print("qb_filterDirectors:", e)
         return qb_filterDirectors(directors, main_entity_name)
 
+def split_json(json_obj, max_size):
+    smaller_objs = []
+    current_obj = {}
+    
+    for key, value in json_obj.items():
+        if len(current_obj) == max_size:
+            smaller_objs.append(current_obj)
+            current_obj = {}
+        current_obj[key] = value
+    
+    if current_obj:
+        smaller_objs.append(current_obj)
+    
+    return smaller_objs
+
 def lambda_handler(event, context):
+    
     summary = event["summary"]
+    bodyType = event["bodyType"]
+    jsonID = event["jsonID"]
+
     main_entity_name = summary["MAIN_ENTITY"]["NAME"]
-    
-    dynamodb_table_name = os.environ["DDBTBL_INGESTION"]
-    dynamodb = boto3.resource('dynamodb')
-    table = dynamodb.Table(dynamodb_table_name)
-    
-    if "raw_customers" in event:
-        raw_customers = event["raw_customers"]
-        filteredCustomersArray = json.loads( qb_filterCustomers( json.dumps(raw_customers), main_entity_name) )
+    dynamodb_table_name = os.environ["DDBTBL_INGESTION"]    
+    table = dynamodb_resource.Table(dynamodb_table_name)
+
+    if "raw_customers" == bodyType:
+        response = dynamodb.get_item(TableName=dynamodb_table_name, Key={"id": {"S": jsonID}})
+        raw_customers = json.loads(response["Item"]["data"]["S"])
+        filteredCustomersArray = []
+        arr_json_objects = split_json(raw_customers,100)
+        for obj in arr_json_objects:
+            filteredCustomersArray = filteredCustomersArray + json.loads( qb_filterCustomers( json.dumps(obj), main_entity_name))
         finalCustomers = {}
         for key in filteredCustomersArray:
             try:
@@ -231,17 +243,22 @@ def lambda_handler(event, context):
             except Exception as e:
                 print(e, key) #intentionally skip so if LLM hallucinates and introduces a key not previously available, it will skip.
         id = str(uuid.uuid4())
-        table.put_item(Item={
+        table.put_item(
+            Item={
             "id": id,
             "type": "finalCustomers",
             "data": json.dumps(finalCustomers),
             'ttl_timestamp': int(time.time()) + 7200
         })
-        return { "finalCustomers" : id } 
+        return { "finalCustomers" : id }
         
-    elif "raw_suppliers_or_partners" in event:
-        raw_suppliers_or_partners = event["raw_suppliers_or_partners"]
-        filteredSuppliersArray = json.loads( qb_filterSuppliers( json.dumps(raw_suppliers_or_partners), main_entity_name))
+    elif "raw_suppliers_or_partners" == bodyType:
+        response = dynamodb.get_item(TableName=dynamodb_table_name, Key={"id": {"S": jsonID}})
+        raw_suppliers_or_partners = json.loads(response["Item"]["data"]["S"])
+        filteredSuppliersArray = []
+        arr_json_objects = split_json(raw_suppliers_or_partners,100)
+        for obj in arr_json_objects:
+            filteredSuppliersArray = filteredSuppliersArray + json.loads( qb_filterSuppliers( json.dumps(obj), main_entity_name))
         finalSuppliers = {}
         for key in filteredSuppliersArray:
             try:
@@ -249,17 +266,22 @@ def lambda_handler(event, context):
             except Exception as e:
                 print(e, key) #intentionally skip so if LLM hallucinates and introduces a key not previously available, it will skip.
         id = str(uuid.uuid4())
-        table.put_item(Item={
+        table.put_item(
+            Item={
             "id": id,
             "type": "finalSuppliers",
             "data": json.dumps(finalSuppliers),
             'ttl_timestamp': int(time.time()) + 7200
         })
-        return { "finalSuppliers" : id } 
+        return { "finalSuppliers" : id }
         
-    elif "raw_competitors" in event:
-        raw_competitors = event["raw_competitors"]
-        filteredCompetitorsArray  = json.loads( qb_filterCompetitors( json.dumps(raw_competitors), main_entity_name) )
+    elif "raw_competitors" == bodyType:
+        response = dynamodb.get_item(TableName=dynamodb_table_name, Key={"id": {"S": jsonID}})
+        raw_competitors = json.loads(response["Item"]["data"]["S"])
+        arr_json_objects = split_json(raw_competitors,100)
+        filteredCompetitorsArray = []
+        for obj in arr_json_objects:
+            filteredCompetitorsArray = filteredCompetitorsArray + json.loads( qb_filterCompetitors( json.dumps(obj), main_entity_name))
         finalCompetitors = {}
         for key in filteredCompetitorsArray:
             try:
@@ -267,17 +289,23 @@ def lambda_handler(event, context):
             except Exception as e:
                 print(e, key) #intentionally skip so if LLM hallucinates and introduces a key not previously available, it will skip.
         id = str(uuid.uuid4())
-        table.put_item(Item={
+        table.put_item(
+            Item={
             "id": id,
             "type": "finalCompetitors",
             "data": json.dumps(finalCompetitors),
             'ttl_timestamp': int(time.time()) + 7200
         })
-        return { "finalCompetitors" : id } 
+        return { "finalCompetitors" : id }
+    
         
-    elif "raw_directors" in event:
-        raw_directors = event["raw_directors"]
-        filteredDirectorsArray = json.loads( qb_filterDirectors( json.dumps(raw_directors), main_entity_name) )
+    elif "raw_directors" == bodyType:
+        response = dynamodb.get_item(TableName=dynamodb_table_name, Key={"id": {"S": jsonID}})
+        raw_directors = json.loads(response["Item"]["data"]["S"])
+        arr_json_objects = split_json(raw_directors,100)
+        filteredDirectorsArray = []
+        for obj in arr_json_objects:
+            filteredDirectorsArray = filteredDirectorsArray + json.loads( qb_filterDirectors( json.dumps(obj), main_entity_name))
         finalDirectors = {}
         for key in filteredDirectorsArray:
             try:
@@ -285,11 +313,11 @@ def lambda_handler(event, context):
             except Exception as e:
                 print(e, key) #intentionally skip so if LLM hallucinates and introduces a key not previously available, it will skip.
         id = str(uuid.uuid4())
-        table.put_item(Item={
+        table.put_item(
+            Item={
             "id": id,
             "type": "finalDirectors",
             "data": json.dumps(finalDirectors),
             'ttl_timestamp': int(time.time()) + 7200
         })
         return { "finalDirectors" : id }
-    

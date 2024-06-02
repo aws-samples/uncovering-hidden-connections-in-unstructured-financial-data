@@ -1,5 +1,8 @@
 import json
 import os
+import boto3
+import uuid
+import time
 
 from connectionsinsights.bedrock import (
     uppercase
@@ -23,6 +26,10 @@ def lambda_handler(event, context):
     raw_suppliers_or_partners = {}
     raw_competitors = {}
     raw_directors = {}
+
+    dynamodb = boto3.resource('dynamodb')
+    dynamodb_table_name = os.environ["DDBTBL_INGESTION"]    
+    table = dynamodb.Table(dynamodb_table_name)
     
     for chunk in chunks:
         try:                
@@ -37,6 +44,14 @@ def lambda_handler(event, context):
                     else:
                         for key in raw_customers[x['NAME']].keys():
                             raw_customers[x['NAME']][key] = list(set( raw_customers[x['NAME']][key] ) | set( convertToArray(x[key]) ) )
+                
+                raw_customers_id = str(uuid.uuid4())
+                table.put_item(Item={
+                    "id": raw_customers_id,
+                    "type": "raw_customers",
+                    "data": json.dumps(raw_customers),
+                    'ttl_timestamp': int(time.time()) + 7200
+                })
             if "SUPPLIERS_OR_PARTNERS" in results:
                 for x in [row for row in results['SUPPLIERS_OR_PARTNERS'] if len(row['NAME']) > 0]:
                     if x['NAME'] not in raw_suppliers_or_partners:
@@ -45,6 +60,14 @@ def lambda_handler(event, context):
                         for key in raw_suppliers_or_partners[x['NAME']].keys():
                             raw_suppliers_or_partners[x['NAME']][key] = list(set( raw_suppliers_or_partners[x['NAME']][key] ) | set( convertToArray(x[key]) ) )
 
+                raw_suppliers_or_partners_id = str(uuid.uuid4())
+                table.put_item(Item={
+                    "id": raw_suppliers_or_partners_id,
+                    "type": "raw_suppliers_or_partners",
+                    "data": json.dumps(raw_suppliers_or_partners),
+                    'ttl_timestamp': int(time.time()) + 7200
+                })
+
             if "COMPETITORS" in results:
                 for x in [row for row in results['COMPETITORS'] if len(row['NAME']) > 0]:
                     if x['NAME'] not in raw_competitors:
@@ -52,6 +75,14 @@ def lambda_handler(event, context):
                     else:
                         for key in raw_competitors[x['NAME']].keys():
                             raw_competitors[x['NAME']][key] = list(set( raw_competitors[x['NAME']][key] ) | set( convertToArray(x[key]) ) )
+
+                raw_competitors_id = str(uuid.uuid4())
+                table.put_item(Item={
+                    "id": raw_competitors_id,
+                    "type": "raw_competitors",
+                    "data": json.dumps(raw_competitors),
+                    'ttl_timestamp': int(time.time()) + 7200
+                })
 
             if "DIRECTORS" in results:
                 for x in [row for row in results['DIRECTORS'] if len(row['NAME']) > 0]:
@@ -63,16 +94,24 @@ def lambda_handler(event, context):
                                 raw_directors[x['NAME']][key] = raw_directors[x['NAME']][key] +  x[key] # concat instead of union as its a dict
                             else:
                                 raw_directors[x['NAME']][key] = list(set( raw_directors[x['NAME']][key] ) | set( convertToArray(x[key]) ) )   
+
+                raw_directors_id = str(uuid.uuid4())
+                table.put_item(Item={
+                    "id": raw_directors_id,
+                    "type": "raw_directors",
+                    "data": json.dumps(raw_directors),
+                    'ttl_timestamp': int(time.time()) + 7200
+                })
     
         except Exception as e:
             print("for chunk in chunks:", e) 
             print( chunk )
-            
+
     return [
-        {"raw_customers": raw_customers, "summary" : summary},
-        {"raw_suppliers_or_partners": raw_suppliers_or_partners, "summary" : summary},
-        {"raw_competitors": raw_competitors, "summary" : summary},
-        {"raw_directors": raw_directors, "summary" : summary}
+        {"bodyType": "raw_customers", "jsonID": raw_customers_id, "summary" : summary},
+        {"bodyType": "raw_suppliers_or_partners", "jsonID": raw_suppliers_or_partners_id, "summary" : summary},
+        {"bodyType": "raw_competitors", "jsonID": raw_competitors_id, "summary" : summary},
+        {"bodyType": "raw_directors", "jsonID": raw_directors_id, "summary" : summary}
     ]
     
 

@@ -423,6 +423,7 @@ class CdkStack(Stack):
                                 "sqs:DeleteMessage",
                                 "sqs:ReceiveMessage",
                                 "sqs:SendMessage",
+                                "sqs:changemessagevisibility",
                             ],
                             resources=[
                                 news_queue.queue_arn,
@@ -715,7 +716,8 @@ class CdkStack(Stack):
             timeout=Duration.minutes(15),
             role=role_lambda,
             environment={
-                'DDBTBL_PROMPTS': ddbtbl_prompts.table_name
+                'DDBTBL_PROMPTS': ddbtbl_prompts.table_name,
+                'DDBTBL_INGESTION': ddbtbl_ingestion.table_name,
             }, 
             tracing=_lambda.Tracing.ACTIVE,
             memory_size=1024
@@ -760,6 +762,25 @@ class CdkStack(Stack):
         )
         fn_step_function_clean_up.apply_removal_policy(RemovalPolicy.DESTROY)
 
+        # Create Lambda Functions - Step Function - Return Message
+        function_name = f"{project_name}-step_function-return_message"
+        fn_step_function_return_message = _lambda.Function(self, function_name,
+            function_name=function_name,
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            handler="index.lambda_handler",
+            code=_lambda.Code.from_asset("./lambda-ecs/step-function/07.return-message"),
+            layers=[layer_lambda],
+            timeout=Duration.minutes(15),
+            role=role_lambda,
+            environment={
+                'QUEUE_NAME': reports_queue.queue_name,
+                'DDBTBL_PROMPTS': ddbtbl_prompts.table_name
+            },
+            tracing=_lambda.Tracing.ACTIVE,
+            memory_size=1024
+        )
+        fn_step_function_return_message.apply_removal_policy(RemovalPolicy.DESTROY)
+
         
 
 
@@ -771,6 +792,7 @@ class CdkStack(Stack):
         # ██      ██           ██     ██      ██   ██ ██   ██ ██    ██ ██   ██    ██    ██      
         # ███████  ██████ ███████     ██      ██   ██ ██   ██  ██████  ██   ██    ██    ███████ 
 
+        # Insert Vertices 
         # Create Fargate Definition
         taskdef_insert_vertices = ecs.FargateTaskDefinition(self, 
             f"{project_name}-insert-vertices-and-edges-taskdef",
@@ -849,6 +871,15 @@ class CdkStack(Stack):
                     f"arn:aws:bedrock:{self.region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0", 
                     f"arn:aws:bedrock:{self.region}::foundation-model/anthropic.claude-v2:1",
                     f"arn:aws:bedrock:{self.region}::foundation-model/amazon.titan-embed-text-v1"
+                ]
+            )
+        )
+        taskdef_insert_vertices.add_to_task_role_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["states:SendTaskSuccess"],
+                resources=[
+                    f"arn:aws:states:{self.region}:{self.account}:stateMachine:ConnectionsInsights-main-state-machine"
                 ]
             )
         )
@@ -1034,6 +1065,29 @@ class CdkStack(Stack):
         # ███████    ██    ███████ ██          ██       ██████  ██   ████  ██████    ██    ██  ██████  ██   ████ 
 
 
+        def sfnReturnMessage():
+            task = tasks.LambdaInvoke(
+                self, "returnMessage",
+                state_name="Return Message",
+                result_path="$.output",
+                payload=sfn.TaskInput.from_object({
+                    "ReceiptHandle.$": "$.StateInfo.ReceiptHandle"
+                }),
+                lambda_function=fn_step_function_return_message,
+            )
+            task.add_retry(
+                errors=["States.ALL"],
+                interval=Duration.seconds(1),
+                max_attempts=3,
+                backoff_rate=2
+            )
+            return task.next(
+                sfn.Fail(self, "ProcessingFailed", state_name="Processing Failed")
+            )
+
+        errorHandler = sfnReturnMessage()
+
+
         def sfnPassFormatInputS3FileReceiptHandle():
             return sfn.Pass(self, "FormatInputS3FileReceiptHandle",
                 state_name="Format Input S3 File Receipt Handle",
@@ -1074,6 +1128,7 @@ class CdkStack(Stack):
                 max_attempts=3,
                 backoff_rate=2
             )
+            task.add_catch(handler=errorHandler, result_path="$.output")
             return task
         
         def sfnPassFormatInputSummary():
@@ -1116,11 +1171,13 @@ class CdkStack(Stack):
             return task
         
         def sfnMapProcessChunks():
-            return sfn.Map(self, "MapProcessChunks",
+            task = sfn.Map(self, "MapProcessChunks",
                 state_name="Map - Process Chunks",
                 items_path=sfn.JsonPath.string_at("$.output.Payload.uuid"),
                 result_path="$.output",                
             )
+            task.add_catch(handler=errorHandler, result_path="$.output")
+            return task
 
         def sfnInvokeLambdaConsolidateChunks():
             task = tasks.LambdaInvoke(
@@ -1140,14 +1197,17 @@ class CdkStack(Stack):
                 max_attempts=3,
                 backoff_rate=2
             )
+            task.add_catch(handler=errorHandler, result_path="$.output")
             return task
         
         def sfnMapFilterRecords():
-            return sfn.Map(self, "MapFilterRecords",
+            task = sfn.Map(self, "MapFilterRecords",
                 state_name="Map - Filter Records",
                 items_path=sfn.JsonPath.string_at("$.output.Payload"),
                 result_path="$.output",                
             )
+            task.add_catch(handler=errorHandler, result_path="$.output")
+            return task
         
         def sfnInvokeLambdaFilterRecords():
             task = tasks.LambdaInvoke(
@@ -1162,14 +1222,14 @@ class CdkStack(Stack):
                 max_attempts=3,
                 backoff_rate=2
             )
-            return task
-        
+            return task       
+
         def sfnInvokeLambdaInsertVerticesEdges():
             task = tasks.EcsRunTask(
                 self, "InsertVerticesEdges",
                 state_name="Insert Vertices & Edges",
-                integration_pattern=sfn.IntegrationPattern.RUN_JOB,
-                cluster=ecs.Cluster.from_cluster_attributes(self, "cluster", cluster_name=cluster.cluster_name, vpc=vpc),
+                integration_pattern=sfn.IntegrationPattern.WAIT_FOR_TASK_TOKEN,
+                cluster=ecs.Cluster.from_cluster_attributes(self, "cluster-insert-vertices", cluster_name=cluster.cluster_name, vpc=vpc),
                 task_definition=taskdef_insert_vertices,
                 subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_ISOLATED),
                 launch_target=tasks.EcsFargateLaunchTarget(platform_version=ecs.FargatePlatformVersion.LATEST),
@@ -1211,6 +1271,7 @@ class CdkStack(Stack):
                 max_attempts=3,
                 backoff_rate=2
             )
+            task.add_catch(handler=errorHandler, result_path="$.output")
             return task
        
         def sfnInvokeLambdaCleanup():
@@ -1231,7 +1292,7 @@ class CdkStack(Stack):
                 max_attempts=3,
                 backoff_rate=2
             )
-            return task        
+            return task  
 
         def create_state_machine_definition():
             return sfnInvokeLambdaReceiveMessages().next(
@@ -1298,7 +1359,7 @@ class CdkStack(Stack):
 
 
 
-        # ███████ ██    ██ ███████ ██ █    ██ ████████ ███████ 
+        # ███████ ██    ██ ███████ ███    ██ ████████ ███████ 
         # ██      ██    ██ ██      ████   ██    ██    ██      
         # █████   ██    ██ █████   ██ ██  ██    ██    ███████ 
         # ██       ██  ██  ██      ██  ██ ██    ██         ██ 

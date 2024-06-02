@@ -165,11 +165,13 @@ def addOrUpdateEdge(source, edge_name, destination, edge_property_dict):
 
 def clean_name(name):
     suffixes = ["CO", "INC", "LTD", "LLP", "LIMITED", "COM"]  # Add more if needed
+    prefixes = ["MR", "DR", "PROF", "MS", "MISS", "MDM", "MRS"]  # Add more if needed
     name = name.replace(',', ' ').strip()
     name = name.replace('.', ' ').strip()
     
     name_array = name.split()
     name_array = [part for part in name_array if part.upper() not in suffixes]
+    name_array = [part for part in name_array if part.upper() not in prefixes]
 
     return " ".join(name_array).strip()        
 
@@ -190,8 +192,8 @@ def createVertex(label, name, attributes):
     cleaned_name = clean_name(name)
     new_vertex = g.addV(label).property(Cardinality.single, 'NAME', cleaned_name)
     for attribute in attributes:
-        key, value = list(attribute.keys())[0], list(attribute.values())[0]
-        new_vertex = new_vertex.property(Cardinality.single, key, value)
+        for key, value in attribute.items():
+            new_vertex = new_vertex.property(Cardinality.single, key, value)
     created_vertex = new_vertex.next()
     
     return created_vertex
@@ -203,10 +205,13 @@ def updateVertex(id, attributes):
     vertex = g.V(id)
     for attribute in attributes:
         for key, value in attribute.items():
-            value = value + ("," + properties[key] if key in properties else "")
-            value = [ i.strip() for i in value.upper().split(",") if i.strip() != ""]
-            value = list(set( value ) )
-            vertex = vertex.property(Cardinality.single, key, ",".join(value))
+            if key in ["SUMMARY_OF_BUSINESS_PERFORMANCE", "SUMMARY_OF_BUSINESS_STRATEGY"]:
+                vertex = vertex.property(Cardinality.single, key, value)
+            else:
+                value = value + ("," + properties[key] if key in properties else "")
+                value = [ i.strip() for i in value.upper().split(",") if i.strip() != ""]
+                value = list(set( value ) )
+                vertex = vertex.property(Cardinality.single, key, ",".join(value))
     vertex.next()
 
 def getOrCreateID(label, name, attributes, edges):

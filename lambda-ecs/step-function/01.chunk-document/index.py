@@ -24,7 +24,9 @@ def qb_generateDocumentSummary(text):
 		"ATTRIBUTES" : [
 			{ "INDUSTRY": "<ATTRIBUTE_VALUE>" },
 			{ "FOCUS_AREA": ["<ATTRIBUTE_VALUE>"] },
-			{ "REVENUE_GENERATING_INDUSTRIES": ["<ATTRIBUTE_VALUE>"] }
+			{ "REVENUE_GENERATING_INDUSTRIES": ["<ATTRIBUTE_VALUE>"] },
+            { "SUMMARY_OF_BUSINESS_PERFORMANCE": "<ATTRIBUTE_VALUE>" },
+            { "SUMMARY_OF_BUSINESS_STRATEGY": "<ATTRIBUTE_VALUE>" },
 		]
 	}
 }
@@ -41,9 +43,19 @@ Here is the document:
 
 1) Identify the full name of the main entity discussed in <document> and any key qualitative attributes mentioned.  Leave array empty if you cannot identify any.
 
-2) Print out the results in <results></results> tag using the following JSON format:
+2) Identify the industry that the main entity is operating in.  Leave string value empty if you cannot identify any.
+         
+3) Identity the focus area that the main entity is focusing on.  Leave array empty if you cannot identify any.
+
+4) Identify the revenue generating industries that the main entity is operating in.  Leave array empty if you cannot identify any.
+
+5) Summarize the business performance of the main entity.  Leave string value empty if you cannot identify any.
+
+6) Summarize the business strategy of the main entity.  Leave string value empty if you cannot identify any.
+
+7) Print out the results in <results></results> tag using the following JSON format:
 {sampleJSON}
-         """.format(text=text, sampleJSON=sampleJSON)},
+""".format(text=text, sampleJSON=sampleJSON)},
          {"role":"assistant", "content": ""}
     ]
 
@@ -131,17 +143,39 @@ def lambda_handler(event, context):
     s3.download_file(S3_BUCKET, S3_KEY, local_file_path)
 
     chunks = splitDocument(local_file_path)
-    maxSummaryChunkCount = 10
+    maxSummaryChunkCount = 40 # max number of chunks to use for summary; 1 chunk ~ 1 page
+    maxSummaryTokenCount = maxSummaryChunkCount * 1000
     summaryChunkCount = len(chunks) if len(chunks) < maxSummaryChunkCount else maxSummaryChunkCount
+    chunkIndex = 0
+    tokenCount = 0
+    for chunk in chunks:
+        tokenCount = tokenCount + len(chunk["text"].split())
+        if tokenCount >= maxSummaryTokenCount:
+            summaryChunkCount = chunkIndex+1
+            break
+        chunkIndex = chunkIndex + 1
+
     summary = json.loads( qb_generateDocumentSummary(
         ' '.join([chunks[i]["text"] for i in range(summaryChunkCount)])
         ) )
     summary["MAIN_ENTITY"]["ATTRIBUTES"] = summary["MAIN_ENTITY"]["ATTRIBUTES"] + [{ "SOURCE":  S3_KEY.split("/")[-1].upper() }]
     
+    #make a shorter copy of summary json object for use in process chunks only
+    summaryShort = json.loads(json.dumps(summary))
+    # delete SUMMARY_OF_BUSINESS_PERFORMANCE and SUMMARY_OF_BUSINESS_STRATEGY from summaryShort 
+    def deleteAttribute(array, key):
+        i = 0
+        for attribute in array["MAIN_ENTITY"]["ATTRIBUTES"]:
+            if key in attribute:
+                del array["MAIN_ENTITY"]["ATTRIBUTES"][i]
+            i = i + 1
+    deleteAttribute(summaryShort, "SUMMARY_OF_BUSINESS_PERFORMANCE")
+    deleteAttribute(summaryShort, "SUMMARY_OF_BUSINESS_STRATEGY")
+    
     for chunk in chunks:
         uuids.append({
             "id": chunk["id"],
-            "summary": summary,
+            "summary": summaryShort,
             "source": "{file}".format(file=S3_KEY.split("/")[-1])
         })
         table.put_item(Item={
@@ -153,7 +187,7 @@ def lambda_handler(event, context):
         })
     
     os.remove(local_file_path)
-    
+
     return {
         "uuid": uuids,
         "summary": summary
