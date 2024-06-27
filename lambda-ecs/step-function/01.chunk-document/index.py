@@ -16,59 +16,68 @@ from connectionsinsights.bedrock import (
     convertMessagesToTextCompletion
 )
 
-def qb_generateDocumentSummary(text):
-    sampleJSON = """
-{
-	"MAIN_ENTITY": {
-		"NAME": "<FULL_NAME>",
-		"ATTRIBUTES" : [
-			{ "INDUSTRY": "<ATTRIBUTE_VALUE>" },
-			{ "FOCUS_AREA": ["<ATTRIBUTE_VALUE>"] },
-			{ "REVENUE_GENERATING_INDUSTRIES": ["<ATTRIBUTE_VALUE>"] },
-            { "SUMMARY_OF_BUSINESS_PERFORMANCE": "<ATTRIBUTE_VALUE>" },
-            { "SUMMARY_OF_BUSINESS_STRATEGY": "<ATTRIBUTE_VALUE>" },
-		]
-	}
-}
-"""
+def qb_generateDocumentSummary(chunks,summaryChunkCount):
+    text = ' '.join([chunks[i]["text"] for i in range(int(summaryChunkCount))])
+    try:
+        sampleJSON = """
+    {
+        "MAIN_ENTITY": {
+            "NAME": "<FULL_NAME>",
+            "ATTRIBUTES" : [
+                { "INDUSTRY": "<ATTRIBUTE_VALUE>" },
+                { "FOCUS_AREA": ["<ATTRIBUTE_VALUE>"] },
+                { "REVENUE_GENERATING_INDUSTRIES": ["<ATTRIBUTE_VALUE>"] },
+                { "SUMMARY_OF_BUSINESS_PERFORMANCE": "<ATTRIBUTE_VALUE>" },
+                { "SUMMARY_OF_BUSINESS_STRATEGY": "<ATTRIBUTE_VALUE>" },
+            ]
+        }
+    }
+    """
 
-    messages = [
-        {"role": "user", "content": """
-I will provide you with a document that which is a subset of a larger document.  Read it carefully as I will be asking you questions about it.
+        messages = [
+            {"role": "user", "content": """
+    I will provide you with a document that which is a subset of a larger document.  Read it carefully as I will be asking you questions about it.
 
-Here is the document:
-<document>
-{text}
-</document>
+    Here is the document:
+    <document>
+    {text}
+    </document>
 
-1) Identify the full name of the main entity discussed in <document> and any key qualitative attributes mentioned.  Leave array empty if you cannot identify any.
+    1) Identify the full name of the main entity discussed in <document> and any key qualitative attributes mentioned.  Leave array empty if you cannot identify any.
 
-2) Identify the industry that the main entity is operating in.  Leave string value empty if you cannot identify any.
-         
-3) Identity the focus area that the main entity is focusing on.  Leave array empty if you cannot identify any.
+    2) Identify the industry that the main entity is operating in.  Leave string value empty if you cannot identify any.
+            
+    3) Identity the focus area that the main entity is focusing on.  Leave array empty if you cannot identify any.
 
-4) Identify the revenue generating industries that the main entity is operating in.  Leave array empty if you cannot identify any.
+    4) Identify the revenue generating industries that the main entity is operating in.  Leave array empty if you cannot identify any.
 
-5) Summarize the business performance of the main entity.  Leave string value empty if you cannot identify any.
+    5) Summarize the business performance of the main entity.  Leave string value empty if you cannot identify any.
 
-6) Summarize the business strategy of the main entity.  Leave string value empty if you cannot identify any.
+    6) Summarize the business strategy of the main entity.  Leave string value empty if you cannot identify any.
 
-7) Print out the results in <results></results> tag using the following JSON format:
-{sampleJSON}
-""".format(text=text, sampleJSON=sampleJSON)},
-         {"role":"assistant", "content": ""}
-    ]
+    7) Print out the results in <results></results> tag using the following JSON format:
+    {sampleJSON}
+    """.format(text=text, sampleJSON=sampleJSON)},
+            {"role":"assistant", "content": ""}
+        ]
 
-    completion = queryBedrockStreaming(messages)
-    
-    results = getTextWithinTags(completion,'results').strip()
-    if results == "":
-        return qb_generateDocumentSummary(text)
-    else:
-        results = uppercase( json.loads(cleanJSONString(results)) )
-        savePrompt(convertMessagesToTextCompletion(messages) + "\n\n" + completion, id=results["MAIN_ENTITY"]["NAME"]+"->qb_generateDocumentSummary")
+        completion = queryBedrockStreaming(messages)
+        
+        results = getTextWithinTags(completion,'results').strip()
+        if results == "":
+            return qb_generateDocumentSummary(chunks,summaryChunkCount)
+        else:
+            results = uppercase( json.loads(cleanJSONString(results)) )
+            savePrompt(convertMessagesToTextCompletion(messages) + "\n\n" + completion, id=results["MAIN_ENTITY"]["NAME"]+"->qb_generateDocumentSummary")
 
-        return json.dumps( results ) 
+            return json.dumps( results ) 
+    except Exception as e:
+        if "validationException".upper() in str(e).upper() and "Input is too long".upper() in str(e).upper():
+            return qb_generateDocumentSummary(chunks, summaryChunkCount * 0.75)
+        else:
+            raise Exception(e)
+
+        
     
 def splitDocument(fileName):
     maxTokensPerChunk = 1000 # estimate 1 space = 1 word = 1 token
@@ -144,20 +153,7 @@ def lambda_handler(event, context):
 
     chunks = splitDocument(local_file_path)
     maxSummaryChunkCount = 40 # max number of chunks to use for summary; 1 chunk ~ 1 page
-    maxSummaryTokenCount = maxSummaryChunkCount * 1000
-    summaryChunkCount = len(chunks) if len(chunks) < maxSummaryChunkCount else maxSummaryChunkCount
-    chunkIndex = 0
-    tokenCount = 0
-    for chunk in chunks:
-        tokenCount = tokenCount + len(chunk["text"].split())
-        if tokenCount >= maxSummaryTokenCount:
-            summaryChunkCount = chunkIndex+1
-            break
-        chunkIndex = chunkIndex + 1
-
-    summary = json.loads( qb_generateDocumentSummary(
-        ' '.join([chunks[i]["text"] for i in range(summaryChunkCount)])
-        ) )
+    summary = json.loads(qb_generateDocumentSummary(chunks,maxSummaryChunkCount))
     summary["MAIN_ENTITY"]["ATTRIBUTES"] = summary["MAIN_ENTITY"]["ATTRIBUTES"] + [{ "SOURCE":  S3_KEY.split("/")[-1].upper() }]
     
     #make a shorter copy of summary json object for use in process chunks only

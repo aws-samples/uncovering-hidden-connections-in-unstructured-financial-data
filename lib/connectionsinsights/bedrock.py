@@ -234,13 +234,16 @@ def uppercase(data):
         return data
 
 def savePrompt(prompt, id=""):
-    dynamodb = boto3.resource('dynamodb')
-    table = dynamodb.Table(os.environ["DDBTBL_PROMPTS"])
-    table.put_item(
-        Item={
-            'id': id+str(uuid.uuid4()),
-            'prompt': prompt,
-            'ttl_timestamp': int(time.time()) + 86400
-        }
-    )
+    try:
+        dynamodb = boto3.resource('dynamodb')
+        table = dynamodb.Table(os.environ["DDBTBL_PROMPTS"])
+        table.put_item(
+            Item={
+                'id': id+str(uuid.uuid4()),
+                'prompt': prompt,
+                'ttl_timestamp': int(time.time()) + 86400
+            }
+        )
+    except Exception as e:
+        print(e)
 
