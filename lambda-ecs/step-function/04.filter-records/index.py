@@ -11,9 +11,15 @@ from connectionsinsights.bedrock import (
     savePrompt,
     convertMessagesToTextCompletion
 )
+
+from connectionsinsights.utils import (
+    clean_name
+)
+
   
 dynamodb_resource = boto3.resource('dynamodb')
 dynamodb = boto3.client("dynamodb")
+split_json_count = 50
 
 def qb_filterCustomers(customers, main_entity_name):
     if customers.strip() == "{}":
@@ -232,8 +238,9 @@ def lambda_handler(event, context):
     if "raw_customers" == bodyType:
         response = dynamodb.get_item(TableName=dynamodb_table_name, Key={"id": {"S": jsonID}})
         raw_customers = json.loads(response["Item"]["data"]["S"])
+        raw_customers = { clean_name(key): value for key, value in raw_customers.items() } # clean key values
         filteredCustomersArray = []
-        arr_json_objects = split_json(raw_customers,100)
+        arr_json_objects = split_json(raw_customers,split_json_count)
         for obj in arr_json_objects:
             filteredCustomersArray = filteredCustomersArray + json.loads( qb_filterCustomers( json.dumps(obj), main_entity_name))
         finalCustomers = {}
@@ -255,8 +262,9 @@ def lambda_handler(event, context):
     elif "raw_suppliers_or_partners" == bodyType:
         response = dynamodb.get_item(TableName=dynamodb_table_name, Key={"id": {"S": jsonID}})
         raw_suppliers_or_partners = json.loads(response["Item"]["data"]["S"])
+        raw_suppliers_or_partners = { clean_name(key): value for key, value in raw_suppliers_or_partners.items() } # clean key values
         filteredSuppliersArray = []
-        arr_json_objects = split_json(raw_suppliers_or_partners,100)
+        arr_json_objects = split_json(raw_suppliers_or_partners,split_json_count)
         for obj in arr_json_objects:
             filteredSuppliersArray = filteredSuppliersArray + json.loads( qb_filterSuppliers( json.dumps(obj), main_entity_name))
         finalSuppliers = {}
@@ -278,7 +286,8 @@ def lambda_handler(event, context):
     elif "raw_competitors" == bodyType:
         response = dynamodb.get_item(TableName=dynamodb_table_name, Key={"id": {"S": jsonID}})
         raw_competitors = json.loads(response["Item"]["data"]["S"])
-        arr_json_objects = split_json(raw_competitors,100)
+        raw_competitors = { clean_name(key): value for key, value in raw_competitors.items() } # clean key values
+        arr_json_objects = split_json(raw_competitors,split_json_count)
         filteredCompetitorsArray = []
         for obj in arr_json_objects:
             filteredCompetitorsArray = filteredCompetitorsArray + json.loads( qb_filterCompetitors( json.dumps(obj), main_entity_name))
@@ -302,7 +311,8 @@ def lambda_handler(event, context):
     elif "raw_directors" == bodyType:
         response = dynamodb.get_item(TableName=dynamodb_table_name, Key={"id": {"S": jsonID}})
         raw_directors = json.loads(response["Item"]["data"]["S"])
-        arr_json_objects = split_json(raw_directors,100)
+        raw_directors = { clean_name(key): value for key, value in raw_directors.items() } # clean key values
+        arr_json_objects = split_json(raw_directors,split_json_count)
         filteredDirectorsArray = []
         for obj in arr_json_objects:
             filteredDirectorsArray = filteredDirectorsArray + json.loads( qb_filterDirectors( json.dumps(obj), main_entity_name))

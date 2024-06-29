@@ -482,6 +482,20 @@ class CdkStack(Stack):
                         )
                     ]
                 ),
+                "inline_policy_start_execution_state_machine": iam.PolicyDocument(
+                    statements=[
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=[
+                                "states:StartExecution"
+                            ],
+                            resources=[
+                                f"arn:aws:states:{self.region}:{self.account}:stateMachine:{project_name}-state-machine"
+                            ]
+                        )
+                    ]
+                )
+                
             }
         )
         role_lambda.apply_removal_policy(RemovalPolicy.DESTROY)
@@ -624,6 +638,26 @@ class CdkStack(Stack):
             memory_size=1024
         )
         fn_s3_pipeline_ingestion_trigger.apply_removal_policy(RemovalPolicy.DESTROY)
+
+        # Create Lambda Functions - S3 Pipeline - Read Ingestion Queue
+        function_name = f"{project_name}-s3_pipeline-read-ingestion-queue"
+        fn_s3_pipeline_read_ingestion_queue = _lambda.Function(self, function_name,
+            function_name=function_name,
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            handler="index.lambda_handler",
+            code=_lambda.Code.from_asset("./lambda-ecs/s3_pipeline/read-ingestion-queue"),
+            layers=[layer_lambda],
+            timeout=Duration.minutes(15),
+            role=role_lambda,
+            environment={
+                'QUEUE_NAME': reports_queue.queue_name,
+                'DDBTBL_PROMPTS': ddbtbl_prompts.table_name,
+                'STATE_MACHINE_ARN': f"arn:aws:states:{self.region}:{self.account}:stateMachine:{project_name}-state-machine"
+            },
+            tracing=_lambda.Tracing.ACTIVE,
+            memory_size=1024
+        )
+        fn_s3_pipeline_read_ingestion_queue.apply_removal_policy(RemovalPolicy.DESTROY)
 
         # Create Lambda Functions - S3 Pipeline - Process News
         function_name = f"{project_name}-s3_pipeline-process_news"
@@ -780,6 +814,8 @@ class CdkStack(Stack):
             memory_size=1024
         )
         fn_step_function_return_message.apply_removal_policy(RemovalPolicy.DESTROY)
+
+        
 
         
 
@@ -1295,31 +1331,24 @@ class CdkStack(Stack):
             return task  
 
         def create_state_machine_definition():
-            return sfnInvokeLambdaReceiveMessages().next(
-                sfn.Choice(self, "choice", state_name="Choice - Message Available?")
-                .when(sfn.Condition.is_present("$.Messages"),
-                    sfnPassFormatInputS3FileReceiptHandle()
-                    .next(sfnInvokeLambdaChunkDocuments())
-                    .next(sfnPassFormatInputSummary())
-                    .next(sfnMapProcessChunks()
-                          .item_processor(
-                              sfnDynamoGetItem()
-                              .next(sfnInvokeLambdaProcessChunks())
-                          )
-                    )
-                    .next(sfnInvokeLambdaConsolidateChunks())
-                    .next(sfnMapFilterRecords()
-                          .item_processor(
-                              sfnInvokeLambdaFilterRecords()
-                          )
-                    )
-                    .next(sfnInvokeLambdaInsertVerticesEdges())
-                    .next(sfnInvokeLambdaCleanup())
-                    .next(sfn.Succeed(self, "SuccessProcessCompleted", state_name="Success Process Completed"))
+            return sfnPassFormatInputS3FileReceiptHandle().next(
+                sfnInvokeLambdaChunkDocuments()
+                .next(sfnPassFormatInputSummary())
+                .next(sfnMapProcessChunks()
+                        .item_processor(
+                            sfnDynamoGetItem()
+                            .next(sfnInvokeLambdaProcessChunks())
+                        )
                 )
-                .otherwise(
-                    sfn.Succeed(self, "SuccessNothingToProcess", state_name="Success Nothing To Process")
+                .next(sfnInvokeLambdaConsolidateChunks())
+                .next(sfnMapFilterRecords()
+                        .item_processor(
+                            sfnInvokeLambdaFilterRecords()
+                        )
                 )
+                .next(sfnInvokeLambdaInsertVerticesEdges())
+                .next(sfnInvokeLambdaCleanup())
+                .next(sfn.Succeed(self, "SuccessProcessCompleted", state_name="Success Process Completed"))
             )
             
         state_machine_log_group = logs.LogGroup(
@@ -1388,7 +1417,7 @@ class CdkStack(Stack):
             self, f"{project_name}-trigger-step-function-rule",
             rule_name=f"{project_name}-trigger-step-function-rule",
             schedule=events.Schedule.rate(Duration.minutes(1)),
-            targets=[targets.SfnStateMachine(state_machine)]
+            targets=[targets.LambdaFunction(fn_s3_pipeline_read_ingestion_queue)]
         )
 
 

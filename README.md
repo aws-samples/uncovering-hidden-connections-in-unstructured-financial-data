@@ -23,17 +23,16 @@ Such second or third-order order impact are difficult to identify and even harde
     * Note that the reports used should be officially published reports to minimize the inclusion of inaccurate data into your knowledge graph (as opposed to news/tabloids).
 2. S3 event notification triggers an AWS Lambda function which sends the S3 bucket/file name to an Amazon Simple Queue Service Queue (FIFO).
     * The use of FIFO queue is to ensure that the report ingestion process is performed sequentially to reduce the likelihood of introducing duplicate data into your knowledge graph.
-3. An Amazon EventBridge time based event runs every minute to start the execution of an AWS Step Function asynchronously.
+3. An Amazon EventBridge time based event runs every minute to invoke an AWS Lambda function.  The function will retrieve the next available queue message from SQS and start the execution of an AWS Step Function asynchronously.
 4. A step function state machine executes through a series of tasks to process the uploaded document by extracting out key information and inserting them into your knowledge graph.
     * Tasks
-        1. Receives queue message from SQS.        
-        2. Downloads proxy/annual/10k report file (PDF) from S3 and splits it into multiple smaller text chunks (~1000 words) for processing.  Store the text chunks in Amazon DynamoDB.
-        3. Using Anthropic’s Claude v3 Sonnet on Amazon Bedrock, process the first few text chunks to determine the main entity that the report is referring to, together with relevant attributes (e.g. industry).
-        4. Retrieves the text chunks from DynamoDB and for each text chunk, invokes a lambda function to extract out entities (company/person), and its relationship (customer/supplier/partner/competitor/director) to the main entity using Amazon Bedrock.
-        5. Consolidate all extracted information
-        6. Filters out noise / irrelevant entities (i.e. generic terms such as "consumers") using Amazon Bedrock.
-        7. Use Amazon Bedrock to perform disambiguation by reasoning using the extracted information against the list of similar entities from the knowledge graph.  If the entity does not exist, insert it.  Otherwise, use the entity that already exists in the knowledge graph. Inserts all relationships extracted.
-        8. Perform clean up by deleting the SQS queue message & the S3 file.
+        1. Downloads proxy/annual/10k report file (PDF) from S3 and splits it into multiple smaller text chunks (~1000 words) for processing.  Store the text chunks in Amazon DynamoDB.
+        2. Using Anthropic’s Claude v3 Sonnet on Amazon Bedrock, process the first few text chunks to determine the main entity that the report is referring to, together with relevant attributes (e.g. industry).
+        3. Retrieves the text chunks from DynamoDB and for each text chunk, invokes a lambda function to extract out entities (company/person), and its relationship (customer/supplier/partner/competitor/director) to the main entity using Amazon Bedrock.
+        4. Consolidate all extracted information
+        5. Filters out noise / irrelevant entities (i.e. generic terms such as "consumers") using Amazon Bedrock.
+        6. Use Amazon Bedrock to perform disambiguation by reasoning using the extracted information against the list of similar entities from the knowledge graph.  If the entity does not exist, insert it.  Otherwise, use the entity that already exists in the knowledge graph. Inserts all relationships extracted.
+        7. Perform clean up by deleting the SQS queue message & the S3 file.
     * Once this step completes, your knowledge graph is updated and ready to use.
 5. A user accesses a React-based web application to view the news articles which are enriched with entity/sentiment/connection path information.
     * URL for the web application can be copied from [CloudFormation console - webapp stack](https://us-east-1.console.aws.amazon.com/cloudformation/home) output - "WebApplicationURL"

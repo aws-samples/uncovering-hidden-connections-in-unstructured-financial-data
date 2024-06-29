@@ -7,6 +7,8 @@ import re
 import uuid
 from math import sqrt, pow
 import botocore
+from datetime import datetime
+
 
 # ██████  ███████ ██████  ██████   ██████   ██████ ██   ██ 
 # ██   ██ ██      ██   ██ ██   ██ ██    ██ ██      ██  ██  
@@ -234,6 +236,10 @@ def uppercase(data):
         return data
 
 def savePrompt(prompt, id=""):
+    current_timestamp = time.time()
+    dt_object = datetime.fromtimestamp(current_timestamp)
+    formatted_time = dt_object.strftime("%Y-%m-%d %H:%M")
+
     try:
         dynamodb = boto3.resource('dynamodb')
         table = dynamodb.Table(os.environ["DDBTBL_PROMPTS"])
@@ -241,7 +247,8 @@ def savePrompt(prompt, id=""):
             Item={
                 'id': id+str(uuid.uuid4()),
                 'prompt': prompt,
-                'ttl_timestamp': int(time.time()) + 86400
+                'timestamp': formatted_time,
+                'ttl_timestamp': int(current_timestamp) + 86400                
             }
         )
     except Exception as e:

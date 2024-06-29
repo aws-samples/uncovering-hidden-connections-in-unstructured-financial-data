@@ -153,7 +153,7 @@ def lambda_handler(event, context):
 
     chunks = splitDocument(local_file_path)
     maxSummaryChunkCount = 40 # max number of chunks to use for summary; 1 chunk ~ 1 page
-    summary = json.loads(qb_generateDocumentSummary(chunks,maxSummaryChunkCount))
+    summary = json.loads(qb_generateDocumentSummary(chunks,min(maxSummaryChunkCount,len(chunks)-1)))
     summary["MAIN_ENTITY"]["ATTRIBUTES"] = summary["MAIN_ENTITY"]["ATTRIBUTES"] + [{ "SOURCE":  S3_KEY.split("/")[-1].upper() }]
     
     #make a shorter copy of summary json object for use in process chunks only
