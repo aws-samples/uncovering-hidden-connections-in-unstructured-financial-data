@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { checkSync } from 'recheck';
 import React, { useState, useEffect } from 'react';
-import { Col, Row, Input, List, Tag, Space, Card, Divider, notification, Drawer, Switch, Empty, Button,  } from 'antd';
+import { Col, Row, Input, List, Tag, Space, Card, Divider, notification, Drawer, Switch, Empty, Button, Collapse } from 'antd';
 import { SettingOutlined, ArrowUpOutlined, ArrowDownOutlined, LoadingOutlined, ExclamationCircleOutlined} from '@ant-design/icons';
 import './index.css';
 
@@ -14,6 +14,7 @@ function App() {
   const [newsApiKey, setNewsApiKey] = useState('');
   const [news, setNews] = useState([]);
   const [selectedNews, setSelectedNews] = useState("");
+  const [selectedPaths, setSelectedPaths] = useState([]);
   const [settingClicked, setSettingClicked] = useState(false); 
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [nHops, setNHops] = useState(0); 
@@ -89,6 +90,23 @@ function App() {
   // Handle selecting of news 
   const handleNewsClick = (item) => {
     setSelectedNews(item);
+    const paths = [];
+    for (let i = 0; i < item.paths.length; i++) { // for each news entity
+      for (let x =0; x < item.paths[i].paths.length; x++) { // for each path within the news entity
+        paths.push({
+          label: <>
+            <Tag color={tagColors[i % tagColors.length]}>{item.paths[i].name}{item.paths[i].sentiment === "POSITIVE" ? <ArrowUpOutlined />: item.paths[i].sentiment === "NEGATIVE" ? <ArrowDownOutlined /> : <></>}</Tag>&nbsp;&nbsp;-&nbsp;&nbsp; 
+            Impacted Entity: <strong>{item.paths[i].paths[x].interested_entity}</strong>&nbsp;&nbsp;-&nbsp;&nbsp; 
+            <font color={item.paths[i].paths[x].impact === "POSITIVE" ? "GREEN" : item.paths[i].paths[x].impact === "NEGATIVE" ? "RED" : "BLACK" }><strong>{item.paths[i].paths[x].impact}</strong></font>
+          </>,
+          children: <>
+          {item.paths[i].paths[x].assessment}<br/><br/>
+          <strong>Connection Path:</strong> <i>{item.paths[i].paths[x].path}</i>
+          </>
+        }); 
+      }
+    }
+    setSelectedPaths(paths);
   };
 
   // Refreshing of settings data
@@ -303,25 +321,9 @@ function App() {
                 }
               )
               : ''            
-            }            
+            }
             <Divider />
-            <List
-              header={<div style={{ fontWeight: 'bold' }}>Paths</div>}
-              itemLayout="vertical"
-              dataSource={selectedNews.paths || []}
-              renderItem={(path, index) => (
-                <List.Item>
-                  <List.Item.Meta                  
-                    description={<>
-                    <Tag color={tagColors[index % tagColors.length]}>{path.name}{path.sentiment === "POSITIVE" ? <ArrowUpOutlined />: path.sentiment === "NEGATIVE" ? <ArrowDownOutlined /> : <></>}</Tag><br/>
-                    {path.path ? path.path.map((line, lineIndex) => (
-                      <p key={lineIndex}>{line}</p>
-                    )): ''}
-                    </>}
-                  />
-                </List.Item>
-              )}
-            />
+            <Collapse items={selectedPaths} /><br/>
             <i>
               <Space>* <ArrowUpOutlined /> indicates positive sentiment.<ArrowDownOutlined /> indicates negative sentiment.</Space>
             </i>

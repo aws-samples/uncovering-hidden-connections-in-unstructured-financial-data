@@ -9,6 +9,7 @@ from aws_cdk import (
     aws_wafv2 as waf,
 )
 from constructs import Construct
+import time
 
 class CdkStackWebHosting(Stack):
 
@@ -72,11 +73,11 @@ class CdkStackWebHosting(Stack):
             versioned=True,
         )
 
-        # Deploy the React app to S3 bucket
+        # # Deploy the React app to S3 bucket
         s3_deployment = s3d.BucketDeployment(self, f"{project_name}-DemoWebAppDeployment",
             sources=[s3d.Source.asset("ui/build")],
             destination_bucket=s3_demo_web_app_bucket,
-            retain_on_delete=False
+            retain_on_delete=False,
         )
 
         # Create OAI for access management

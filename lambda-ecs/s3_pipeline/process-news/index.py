@@ -48,6 +48,41 @@ Print them out in a JSON array in the following format within <entities></entiti
     
     return cleanJSONString(entities)
 
+def qb_assessImpact(article, path, interested_entity):
+    messages = [
+        {"role":"user", "content": """
+You will be given a news article, and its connection to an entity.  
+You are to assess the potential impact of the news article on the entity based on its connection.
+You are risk adverse and sensitive to negative news.
+
+Here is the news article:
+<article>
+{article}
+</article>
+
+Here is the connection to the entity:
+<path>
+{path}
+</path>
+
+Here is the entity:
+<entity>
+{entity}
+</entity>
+
+Print out a concise and short summary of the potential impact to the entity between <result></result> tag.
+Print out either POSITIVE/NEGATIVE/NEUTRAL impact to the entity between <impact></impact> tag.
+         """.format(article=article, path=path, entity=interested_entity)},
+         {"role":"assistant", "content": ""}
+    ]
+
+    completion = queryBedrockStreaming(messages)
+    impact = getTextWithinTags(completion, "impact")
+    result = getTextWithinTags(completion, "result")
+
+    return result, impact
+
+
 def processArticle(article):
     g, connection = GraphConnect()
     dynamodb = boto3.resource('dynamodb')
@@ -65,10 +100,15 @@ def processArticle(article):
             value_of_n
         )
         if len(pathsArray) > 0:
+            for path in pathsArray:
+                result, impact = qb_assessImpact(article, path["path"], path["interested_entity"])
+                path["impact"] = impact
+                path["assessment"] = result
+
             paths.append({
                 "name": entity["NAME"],
-                "path": pathsArray,
-                "sentiment": entity["SENTIMENT"]  
+                "sentiment": entity["SENTIMENT"],
+                "paths": pathsArray,
             })
     table.put_item(
         Item={
@@ -98,7 +138,7 @@ def lambda_handler(event, context):
         
         return {
             'statusCode': 200,
-            'body': json.dumps('Hello from Lambda!')
+            'body': json.dumps('Success!')
         }
     except Exception as e: # clear unintended queue messages such as s3:TestEvent
         print(e)

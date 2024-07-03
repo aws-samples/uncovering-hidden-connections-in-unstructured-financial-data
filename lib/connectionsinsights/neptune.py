@@ -237,6 +237,7 @@ def formatPath(paths):
     for path in paths:
         pathString = ""
         partCount = 0
+        lastVertex = ""
         while partCount < len(path):
             if "NAME" in path[partCount]:
                 # Vertex.  Only vertex have "NAME"
@@ -246,6 +247,8 @@ def formatPath(paths):
                         pathString += ' <-- '
                     else:
                         pathString += ' --> '
+                else:
+                    lastVertex = str(path[partCount]["NAME"]) 
             else:
                 # Edge
                 pathString += str(path[partCount][T.label]) 
@@ -258,5 +261,8 @@ def formatPath(paths):
                 else:
                     pathString += ' --> '   
             partCount += 1
-        pathStrings.append(pathString)
+        pathStrings.append({
+            "path": pathString,
+            "interested_entity": lastVertex
+        })
     return pathStrings
