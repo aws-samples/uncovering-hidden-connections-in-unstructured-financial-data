@@ -100,7 +100,7 @@ function App() {
             <font color={item.paths[i].paths[x].impact === "POSITIVE" ? "GREEN" : item.paths[i].paths[x].impact === "NEGATIVE" ? "RED" : "BLACK" }><strong>{item.paths[i].paths[x].impact}</strong></font>
           </>,
           children: <>
-          {item.paths[i].paths[x].assessment}<br/><br/>
+          <div dangerouslySetInnerHTML={{__html: item.paths[i].paths[x].assessment}}></div><br/><br/>
           <strong>Connection Path:</strong> <i>{item.paths[i].paths[x].path}</i>
           </>
         }); 

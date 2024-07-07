@@ -48,11 +48,11 @@ Print them out in a JSON array in the following format within <entities></entiti
     
     return cleanJSONString(entities)
 
-def qb_assessImpact(article, path, interested_entity):
+def qb_assessImpact(article, path, interested_entity, news_entity):
     messages = [
         {"role":"user", "content": """
 You will be given a news article, and its connection to an entity.  
-You are to assess the potential impact of the news article on the entity based on its connection.
+You are to assess the potential impact of the news article on an interested entity based on its connection.
 You are risk adverse and sensitive to negative news.
 
 Here is the news article:
@@ -60,19 +60,25 @@ Here is the news article:
 {article}
 </article>
 
-Here is the connection to the entity:
+Here is the entity mentioned in the news article:
+<news_entity>
+{news_entity}
+</news_entity>
+
+Here is the entity I am interested in:
+<interested_entity>
+{entity}
+</interested_entity>
+
+Here is how the news entity is connected to the entity I am interested in:
 <path>
 {path}
 </path>
 
-Here is the entity:
-<entity>
-{entity}
-</entity>
-
-Print out a concise and short summary of the potential impact to the entity between <result></result> tag.
-Print out either POSITIVE/NEGATIVE/NEUTRAL impact to the entity between <impact></impact> tag.
-         """.format(article=article, path=path, entity=interested_entity)},
+Based on the impact of the news to <news_entity> and the <path> provided, perform the following:
+1) Print out a concise and short summary of the potential impact to <interested_entity> between <result></result> tag.  Highlight phrases that mentions the impact to <interested_entity> and the reasons why using <b></b> tags.
+2) Print out either POSITIVE/NEGATIVE/NEUTRAL impact to <interested_entity> between <impact></impact> tag.
+""".format(article=article, path=path, entity=interested_entity, news_entity=news_entity)},
          {"role":"assistant", "content": ""}
     ]
 
@@ -101,7 +107,7 @@ def processArticle(article):
         )
         if len(pathsArray) > 0:
             for path in pathsArray:
-                result, impact = qb_assessImpact(article, path["path"], path["interested_entity"])
+                result, impact = qb_assessImpact(article, path["path"], path["interested_entity"], entity["NAME"])
                 path["impact"] = impact
                 path["assessment"] = result
 
