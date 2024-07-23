@@ -23,7 +23,7 @@ from connectionsinsights.neptune import (
 def qb_extractDataFromArticle(article):
     format = """
 [{
-"NAME": "<COMPANY_OR_PERSON_FULL_NAME>", "LABEL": "COMPANY_OR_PERSON", "INDUSTRY": "<INDUSTRY_OF_COMPANY_OR_INDUSTRY_THE_PERSON_WORKED_IN>", SENTIMENT": "<POSITIVE_OR_NEUTRAL_OR_NEGATIVE>",
+"NAME": "<COMPANY_OR_PERSON_FULL_NAME>", "LABEL": "COMPANY_OR_PERSON", "INDUSTRY": "<INDUSTRY_OF_COMPANY_OR_INDUSTRY_THE_PERSON_WORKED_IN>", SENTIMENT": "<POSITIVE_OR_NEUTRAL_OR_NEGATIVE>", SENTIMENT_EXPLANATION": "<EXPLANATION_OF_SENTIMENT_IDENTIFIED>",
 "RELATIONSHIPS": [
     { "RELATED_ENTITY": "<RELATED_COMPANY_OR_PERSON_FULL_NAME>", "LABEL": "COMPANY_OR_PERSON", "RELATIONSHIP": "<ROLE_OF_RELATIONSHIP>" }
 ]
@@ -114,6 +114,7 @@ def processArticle(article):
             paths.append({
                 "name": entity["NAME"],
                 "sentiment": entity["SENTIMENT"],
+                "sentiment_explanation": entity["SENTIMENT_EXPLANATION"],
                 "paths": pathsArray,
             })
     table.put_item(
