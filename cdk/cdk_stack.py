@@ -915,7 +915,7 @@ class CdkStack(Stack):
                 effect=iam.Effect.ALLOW,
                 actions=["states:SendTaskSuccess"],
                 resources=[
-                    f"arn:aws:states:{self.region}:{self.account}:stateMachine:ConnectionsInsights-main-state-machine"
+                    f"arn:aws:states:{self.region}:{self.account}:stateMachine:{project_name}-state-machine"
                 ]
             )
         )
