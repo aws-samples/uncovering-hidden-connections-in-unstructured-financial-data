@@ -19,7 +19,7 @@ def lambda_handler(event, context):
         execution_input = {"Messages": response["Messages"]}
         response = step_functions.start_execution(
             stateMachineArn=state_machine_arn,
-            name=s3_key+"_"+str(uuid.uuid4()),
+            name=s3_key[:40]+"_"+str(uuid.uuid4()), #limit of 80 characters.  uuid = 36 characters.
             input=json.dumps(execution_input)
         )
     except Exception as e:

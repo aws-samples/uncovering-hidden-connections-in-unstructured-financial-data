@@ -72,13 +72,8 @@ def getEntities():
 def updateEntityInterested(ID, INTERESTED):
     results = g.V(ID).property(Cardinality.single, "INTERESTED", INTERESTED).next()
 
-def findVertexByLabelandName(label, name, exact_match):
-    if name is None:
-        return []
-    
+def formatResultsFindVertex(results):
     response = []
-    results = g.V().hasLabel(label).has('NAME', TextP.containing(name) if not exact_match else name).elementMap().toList()
-    
     for result in results:
         vertex_id = result[T.id]
         vertex_label = result[T.label]
@@ -111,7 +106,22 @@ def findVertexByLabelandName(label, name, exact_match):
         })
     return response
 
-def union_arrays_by_id(array_of_arrays):
+def findVertexByLabelandName(label, name, exact_match):
+    if name is None:
+        return []
+    
+    results = g.V().hasLabel(label).has('NAME', TextP.containing(name) if not exact_match else name).elementMap().toList()
+    return formatResultsFindVertex(results)
+    
+def findVertexByAcronym(label, name):
+    # when given acronym (e.g. AMD), searches for names that fits the acronym (e.g. ADVANCED MICRO DEVICES)
+    pattern = r''.join([ f'{letter}\\w*\\s+' for letter in name ])
+    regex_pattern = r'\b'+ pattern[:-3] + r'\b' # add ^ at the front and $ at the back if we want it to match strictly
+
+    results = g.V().hasLabel(label).has('NAME', TextP.regex(regex_pattern)).elementMap().toList()
+    return formatResultsFindVertex(results)
+
+def unionArraysByID(array_of_arrays):
     unique_dict = {}
 
     for array in array_of_arrays:
@@ -132,20 +142,22 @@ def getID(label, name, properties, edges):
     # Exact Match
     exact_match = findVertexByLabelandName(label, cleaned_name, True)
 
-    # Acronym Match
+    # Acronym Match - converts names into acronyms and search them (e.g. ADVANCED MICRO DEVICES -> AMD)
     acronym_match = findVertexByLabelandName(label, acronym, True)
 
     # Substring Match
     substring_match = findVertexByLabelandName(label, sub_name, False)
 
-    matches = union_arrays_by_id([exact_match, acronym_match, substring_match])
+    # Acronym Search - searches by acronym (e.g. use AMD to search for ADVANCED MICRO DEVICES)
+    acronym_results = findVertexByAcronym(label, name)
+
+    matches = unionArraysByID([exact_match, acronym_match, substring_match, acronym_results])
 
     if len(matches) == 0:
         return None
     else:
         return disambiguate({"LABEL": label, "NAME": cleaned_name, "PROPERTIES": properties, "EDGES": edges}, matches)
     
-
 def addOrUpdateEdge(source, edge_name, destination, edge_property_dict):
     exists = g.V(source).outE(edge_name).where(__.inV().hasId(destination)).elementMap().toList()
     if not exists:
