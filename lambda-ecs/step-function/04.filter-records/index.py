@@ -46,10 +46,11 @@ Here is the JSON object of companies:
 Perform the following steps:
 1. Categorise each item in <customers> into companies/conglomerates/organisations vs others.
 2. Keep only companies/conglomerates/organisations and remove every other categories.
-3. Some of the attributes may be missing due to lack of information in the source document but this does not necessarily mean that an item is not a company/conglomerate/organisation.
-4. If there are some indication that an item is a company/conglomerate/organisation even though there are limited information, you may include it as an company/conglomerate/organisation.
-5. Assess each item individually and print your explanation within <explanation> tags.
-6. After printing the explanation, print an array containing only names of companies/conglomerates/organisations between <customers></customers> tags.  E.g. [ "COMPANY" ]
+3. Exclude groups of companies or categories of companies.
+4. Some of the attributes may be missing due to lack of information in the source document but this does not necessarily mean that an item is not a company/conglomerate/organisation.
+5. If there are some indication that an item is a company/conglomerate/organisation even though there are limited information, you may include it as an company/conglomerate/organisation.
+6. Assess each item individually and print your explanation within <explanation> tags.
+7. After printing the explanation, print an array containing only names of companies/conglomerates/organisations between <customers></customers> tags.  E.g. [ "COMPANY" ]
 """.format(main_entity_name=main_entity_name,customers=customers,jsonFormat=jsonFormat)},
          {"role":"assistant", "content": """"""}
     ]
@@ -94,10 +95,11 @@ Here is the JSON object of companies:
 Perform the following steps:
 1. Categorise each item in <suppliers_or_partners> into companies/conglomerates/organisations vs others.
 2. Keep only companies/conglomerates/organisations and remove every other categories.
-3. Some of the attributes may be missing due to lack of information in the source document but this does not necessarily mean that an item is not a company/conglomerate/organisation.
-4. If there are some indication that an item is a company/conglomerate/organisation even though there are limited information, you may include it as an company/conglomerate/organisation.
-5. Assess each item individually and print your explanation within <explanation> tags.
-6. After printing the explanation, print an array containing only names of companies/conglomerates/organisations between <suppliers_or_partners></suppliers_or_partners> tags.  E.g. [ "COMPANY" ]
+3. Exclude groups of companies or categories of companies.
+4. Some of the attributes may be missing due to lack of information in the source document but this does not necessarily mean that an item is not a company/conglomerate/organisation.
+5. If there are some indication that an item is a company/conglomerate/organisation even though there are limited information, you may include it as an company/conglomerate/organisation.
+6. Assess each item individually and print your explanation within <explanation> tags.
+7. After printing the explanation, print an array containing only names of companies/conglomerates/organisations between <suppliers_or_partners></suppliers_or_partners> tags.  E.g. [ "COMPANY" ]
 """.format(main_entity_name=main_entity_name,suppliers_or_partners=suppliers_or_partners,jsonFormat=jsonFormat)},
          {"role":"assistant", "content": """"""}
     ]
@@ -141,10 +143,11 @@ Here is the JSON object of companies:
 Perform the following steps:
 1. Categorise each item in <competitors> into companies/conglomerates/organisations vs others.
 2. Keep only companies/conglomerates/organisations and remove every other categories.
-3. Some of the attributes may be missing due to lack of information in the source document but this does not necessarily mean that an item is not a company/conglomerate/organisation.
-4. If there are some indication that an item is a company/conglomerate/organisation even though there are limited information, you may include it as an company/conglomerate/organisation.
-5. Assess each item individually and print your explanation within <explanation> tags.
-6. After printing the explanation, print an array containing only names of companies/conglomerates/organisations between <competitors></competitors> tags.  E.g. [ "COMPANY" ]
+3. Exclude groups of companies or categories of companies.
+4. Some of the attributes may be missing due to lack of information in the source document but this does not necessarily mean that an item is not a company/conglomerate/organisation.
+5. If there are some indication that an item is a company/conglomerate/organisation even though there are limited information, you may include it as an company/conglomerate/organisation.
+6. Assess each item individually and print your explanation within <explanation> tags.
+7. After printing the explanation, print an array containing only names of companies/conglomerates/organisations between <competitors></competitors> tags.  E.g. [ "COMPANY" ]
 """.format(main_entity_name=main_entity_name,competitors=competitors,jsonFormat=jsonFormat)},
          {"role":"assistant", "content": """"""}
     ]
