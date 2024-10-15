@@ -1458,19 +1458,32 @@ class CdkStack(Stack):
 
         # Create User Data script to set up Graph Explorer
         user_data = ec2.UserData.for_linux()
-        user_data.add_commands("""#!/bin/bash""")
-        user_data.add_commands("""cd /home/ec2-user""")
-        user_data.add_commands("""TOKEN=`curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600"` """)
-        user_data.add_commands("""EC2_IP=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" -v http://169.254.169.254/latest/meta-data/public-ipv4)""")
-        user_data.add_commands("""EC2_HOSTNAME="https://"$EC2_IP""")
-        user_data.add_commands("""echo $EC2_HOSTNAME""")
-        user_data.add_commands("""yum update -y""")
-        user_data.add_commands("""yum install git docker -y""")
-        user_data.add_commands("""git clone https://github.com/aws/graph-explorer/""")
-        user_data.add_commands("""systemctl start docker""")
-        user_data.add_commands("""docker buildx build graph-explorer -t "graph-explorer" """)
-        user_data.add_commands("""docker run -p 80:80 -p 443:443 --env HOST=$EC2_HOSTNAME --env PUBLIC_OR_PROXY_ENDPOINT=$EC2_HOSTNAME --env GRAPH_TYPE=gremlin --env USING_PROXY_SERVER=true --env IAM=true --env AWS_REGION={region} --env GRAPH_CONNECTION_URL=https://{NEPTUNE_ENDPOINT} --env PROXY_SERVER_HTTPS_CONNECTION=true --env GRAPH_EXP_FETCH_REQUEST_TIMEOUT=240000 graph-explorer""".format(NEPTUNE_ENDPOINT=neptune_cluster.cluster_endpoint.socket_address, region=self.region))
         
+        # Start up configurations to run scripts after each restart
+        user_data.add_commands("""echo -e "#!/bin/bash\n/home/ec2-user/run_graph_explorer.sh" > /var/lib/cloud/scripts/per-boot/99-setup_graph_explorer.cfg""")
+        user_data.add_commands("""chmod +x /var/lib/cloud/scripts/per-boot/99-setup_graph_explorer.cfg""")
+
+        # Create script to set up & run Graph Explorer
+        user_data.add_commands("""cd /home/ec2-user""")
+        user_data.add_commands("""
+cat > run_graph_explorer.sh << EOF 
+#!/bin/bash
+cd /home/ec2-user
+TOKEN=\$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+EC2_IP=\$(curl -H "X-aws-ec2-metadata-token: \$TOKEN" -v http://169.254.169.254/latest/meta-data/public-ipv4)
+EC2_HOSTNAME="https://"\$EC2_IP
+echo \$EC2_HOSTNAME
+yum update -y
+yum install git docker -y
+[ -d "graph-explorer" ] && rm -r "graph-explorer"
+git clone https://github.com/aws/graph-explorer/
+systemctl start docker
+docker buildx build graph-explorer -t "graph-explorer" 
+docker run -p 80:80 -p 443:443 --env HOST=\$EC2_HOSTNAME --env PUBLIC_OR_PROXY_ENDPOINT=\$EC2_HOSTNAME --env GRAPH_TYPE=gremlin --env USING_PROXY_SERVER=true --env IAM=true --env AWS_REGION={region} --env GRAPH_CONNECTION_URL=https://{NEPTUNE_ENDPOINT} --env PROXY_SERVER_HTTPS_CONNECTION=true --env GRAPH_EXP_FETCH_REQUEST_TIMEOUT=240000 graph-explorer
+EOF""".format(NEPTUNE_ENDPOINT=neptune_cluster.cluster_endpoint.socket_address, region=self.region))
+        user_data.add_commands("""chmod +x run_graph_explorer.sh""")
+        user_data.add_commands("""./run_graph_explorer.sh > output""")
+       
         # Launch EC2 in the public subnet
         ec2_instance = ec2.Instance(self, f"{project_name}-Graph-Explorer-EC2",
             instance_type=ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE3, ec2.InstanceSize.SMALL),
@@ -1496,6 +1509,10 @@ class CdkStack(Stack):
                     )
                 ),
             ],
-            detailed_monitoring=True
+            detailed_monitoring=True,
         )
         output("Graph Explorer", f"https://{ec2_instance.instance_public_ip}/explorer")
+        
+
+
+
