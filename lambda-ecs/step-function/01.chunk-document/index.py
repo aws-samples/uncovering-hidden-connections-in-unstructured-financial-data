@@ -80,7 +80,7 @@ def qb_generateDocumentSummary(chunks,summaryChunkCount):
         
     
 def splitDocument(fileName):
-    maxTokensPerChunk = 1000 # estimate 1 space = 1 word = 1 token
+    maxTokensPerChunk = 500 # estimate 1 space = 1 word = 1 token
     
     # read in PDF file using pypdf
     pdfFileObj = open(fileName, 'rb')
