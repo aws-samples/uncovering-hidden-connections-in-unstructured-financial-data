@@ -33,7 +33,9 @@ def qb_extractDataFromArticle(article):
     messages = [
         {"role":"user", "content": """
 Here is a news article:
+<article>
 {article}
+</article>
 
 Extract out any companies or people mentioned in the article, their sentiment, and their relationships with any entities mentioned in the article.
 Return empty string if any value is not available.
