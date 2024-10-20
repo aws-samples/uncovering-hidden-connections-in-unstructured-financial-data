@@ -311,7 +311,7 @@ class CdkStack(Stack):
         reports_queue = sqs.Queue(
             self,
             f"{project_name}-reports-ingestion.fifo",
-            visibility_timeout=Duration.minutes(90),
+            visibility_timeout=Duration.minutes(120),
             fifo=True,
             content_based_deduplication=True,
             deduplication_scope=sqs.DeduplicationScope.QUEUE,

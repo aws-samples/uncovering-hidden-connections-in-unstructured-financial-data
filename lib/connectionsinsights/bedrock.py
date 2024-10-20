@@ -144,8 +144,9 @@ You are to follow these rules strictly:
 1. You will only use the information provided in the context in your disambiguation.
 2. Subsidiaries or joint ventures should not be considered as the same entity as the parent company; they are to be considered as distinctly different entities.
 3. Parent companies should not be considered the same as the child company.
-4. As the entities are extracted from different sources, you should take into consideration that one entity may have much richer information than the other, and not assume differences in amounts of information equates to different entities.
+4. As the entities are extracted from different sources, you should take into consideration that one entity may have much richer information than the other.  The differences in the level of detailed information between each potential entity and the provided entity should not indicate that the entities are different.
 5. As the amount of information provided may be different for each potential entity and the provided entity, the potential entity does not need to fully match the provided entity to be considered the same.  It is sufficient if there are enough similarities without much conflicting differences.
+6. Companies with the same name and operating in the same industry or focus area have a strong likelihood to be the same entity.
 
 Here is the entity:
 
