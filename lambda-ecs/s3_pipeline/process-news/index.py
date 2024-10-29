@@ -175,10 +175,10 @@ def lambda_handler(event, context):
                 <title>{title}</title>
                 <text>{text}</text>
                 <url>{url}</url>
-                """.format(date=response['Item']['date'], 
-                           title=response['Item']['title'],  
-                           text=response['Item']['text'],
-                           url=response['Item']['url'])
+                """.format(date=response['Item']['date'] if 'date' in response['Item'] else "", 
+                           title=response['Item']['title'] if 'title' in response['Item'] else "",  
+                           text=response['Item']['text'] if 'text' in response['Item'] else "",
+                           url=response['Item']['url'] if "url" in response['Item'] else "")
                 processArticle(file_content)
                 table.delete_item(Key={"id": body})
             else:
