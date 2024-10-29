@@ -22,12 +22,15 @@ from aws_cdk import (
     aws_wafv2 as waf,
     aws_ecs as ecs,
     aws_ecr_assets as ecr_assets,
+    Fn,
+    custom_resources as cr,
 )
 from constructs import Construct
+import time
 
 class CdkStack(Stack):
 
-    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
+    def __init__(self, scope: Construct, construct_id: str, s3_demo_web_app_bucket, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
         project_name = self.stack_name
@@ -38,11 +41,6 @@ class CdkStack(Stack):
             print(f"{key} = {value}")
 
         
-
-
-
-
-
 
 
 
@@ -372,6 +370,7 @@ class CdkStack(Stack):
                             effect=iam.Effect.ALLOW,
                             actions=[
                                 "dynamodb:PutItem", 
+                                "dynamodb:DeleteItem", 
                                 "dynamodb:UpdateItem",
                                 "dynamodb:Scan",
                                 "dynamodb:Query",
@@ -446,7 +445,9 @@ class CdkStack(Stack):
                                 s3_ingestion_bucket.bucket_arn,
                                 s3_ingestion_bucket.bucket_arn+'/*',
                                 s3_news_bucket.bucket_arn,
-                                s3_news_bucket.bucket_arn+'/*'
+                                s3_news_bucket.bucket_arn+'/*',
+                                s3_demo_web_app_bucket.bucket_arn,
+                                s3_demo_web_app_bucket.bucket_arn+'/*'
                             ]
                         )
                     ]
@@ -494,8 +495,20 @@ class CdkStack(Stack):
                             ]
                         )
                     ]
-                )
-                
+                ),
+                "inline_policy_api_gateway": iam.PolicyDocument(
+                    statements=[
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=[
+                                "apigateway:GET"
+                            ],
+                            resources=[
+                                f"arn:aws:apigateway:{self.region}::/apikeys/*"
+                            ]
+                        )
+                    ]
+                )                
             }
         )
         role_lambda.apply_removal_policy(RemovalPolicy.DESTROY)
@@ -619,6 +632,26 @@ class CdkStack(Stack):
             memory_size=1024
         )
         fn_api_news.apply_removal_policy(RemovalPolicy.DESTROY)
+        
+        # Create Lambda Functions - API - Reprocess News
+        function_name = f"{project_name}-reprocess-news"
+        fn_reprocess_news = _lambda.Function(self, function_name,
+            function_name=function_name,
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            handler="index.lambda_handler",
+            code=_lambda.Code.from_asset("./lambda-ecs/api/reprocess-news"),
+            layers=[layer_lambda],
+            timeout=Duration.minutes(15),
+            role=role_lambda,
+            environment={
+                'DDBTBL_NEWS': ddbtbl_news.table_name,
+                'DDBTBL_PROMPTS': ddbtbl_prompts.table_name,
+                'NEWS_QUEUE': news_queue.queue_name
+            },
+            tracing=_lambda.Tracing.ACTIVE,
+            memory_size=1024
+        )
+        fn_reprocess_news.apply_removal_policy(RemovalPolicy.DESTROY)
 
         # Create Lambda Functions - S3 Pipeline - Ingestion Trigger
         function_name = f"{project_name}-s3_pipeline-ingestion-trigger"
@@ -814,7 +847,7 @@ class CdkStack(Stack):
             memory_size=1024
         )
         fn_step_function_return_message.apply_removal_policy(RemovalPolicy.DESTROY)
-
+        
         
 
         
@@ -1039,6 +1072,11 @@ class CdkStack(Stack):
         news_resource = api.root.add_resource('news')
         news_resource.add_method('GET', apigateway.LambdaIntegration(fn_api_news), api_key_required=True)
         news_resource.apply_removal_policy(RemovalPolicy.DESTROY)
+        
+        # Create /reprocessnews resource with Lambda proxy integration
+        reprocessnews_resource = api.root.add_resource('reprocessnews')
+        reprocessnews_resource.add_method('GET', apigateway.LambdaIntegration(fn_reprocess_news), api_key_required=True)
+        reprocessnews_resource.apply_removal_policy(RemovalPolicy.DESTROY)
 
         # Create /generateNews resource with Lambda integration - async
         generateNews_resource = api.root.add_resource('generateNews')        
@@ -1089,7 +1127,7 @@ class CdkStack(Stack):
         )
         usage_plan.add_api_key(api_key)
         usage_plan.apply_removal_policy(RemovalPolicy.DESTROY)
-
+        output("API Key ID", api_key.key_id)
 
 
         
@@ -1402,7 +1440,7 @@ class CdkStack(Stack):
         )
 
         fn_s3_pipeline_process_news.add_event_source(
-            lambda_event_sources.SqsEventSource(news_queue, batch_size=10)
+            lambda_event_sources.SqsEventSource(news_queue, batch_size=1)
         )
 
         # Add S3 Event Notification to Lambda Functions - S3 Pipeline - Ingestion Trigger
@@ -1513,6 +1551,81 @@ EOF""".format(NEPTUNE_ENDPOINT=neptune_cluster.cluster_endpoint.socket_address, 
         )
         output("Graph Explorer", f"https://{ec2_instance.instance_public_ip}/explorer")
         
+        
+        
+        
+        #  ██████ ██    ██ ███████ ████████  ██████  ███    ███     ██████  ███████ ███████  ██████  ██    ██ ██████   ██████ ███████ 
+        # ██      ██    ██ ██         ██    ██    ██ ████  ████     ██   ██ ██      ██      ██    ██ ██    ██ ██   ██ ██      ██      
+        # ██      ██    ██ ███████    ██    ██    ██ ██ ████ ██     ██████  █████   ███████ ██    ██ ██    ██ ██████  ██      █████   
+        # ██      ██    ██      ██    ██    ██    ██ ██  ██  ██     ██   ██ ██           ██ ██    ██ ██    ██ ██   ██ ██      ██      
+        #  ██████  ██████  ███████    ██     ██████  ██      ██     ██   ██ ███████ ███████  ██████   ██████  ██   ██  ██████ ███████ 
 
-
-
+        # Create Lambda Functions - Custom - Populate webapp env
+        function_name = f"{project_name}-custom-populate-webapp-env"
+        fn_custom_populate_webapp_env = _lambda.Function(self, function_name,
+            function_name=function_name,
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            handler="index.lambda_handler",
+            code=_lambda.Code.from_asset("./lambda-ecs/custom/populate-webapp-env"),
+            layers=[layer_lambda],
+            timeout=Duration.minutes(15),
+            role=role_lambda,
+            environment={
+                'APIKEY_ID': api_key.key_id,
+                'API_ENDPOINT': api.url,
+                'WEBAPP_S3BUCKET': s3_demo_web_app_bucket.bucket_name
+            },
+            tracing=_lambda.Tracing.ACTIVE,
+            memory_size=1024
+        )
+        fn_custom_populate_webapp_env.apply_removal_policy(RemovalPolicy.DESTROY)
+        
+        # Create Custom Resource IAM Permission
+        role_custom_resource = iam.Role(self,
+            f"{project_name}-custom_resource_role",
+            role_name=f"{project_name}-custom_resource_role",
+            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
+            inline_policies={
+                "inline_policy_invoke_function": iam.PolicyDocument(
+                    statements=[
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=["lambda:InvokeFunction"],
+                            resources=[fn_custom_populate_webapp_env.function_arn]
+                        )
+                    ]
+                )
+            }
+        )
+        role_custom_resource.apply_removal_policy(RemovalPolicy.DESTROY)
+        
+        # Create Custom Resource
+        cr_populate_webapp_env = cr.AwsCustomResource(
+            self, "invoke-populate_webapp_env",
+            on_create=cr.AwsSdkCall(
+                service="Lambda",
+                action="invoke",
+                parameters={
+                    "FunctionName": fn_custom_populate_webapp_env.function_name,
+                    "Payload": "{}"
+                },
+                physical_resource_id=cr.PhysicalResourceId.of("CustomResourceId")
+            ),
+            on_update=cr.AwsSdkCall(
+                service="Lambda",
+                action="invoke",
+                parameters={
+                    "FunctionName": fn_custom_populate_webapp_env.function_name,
+                    "Payload": "{}"
+                },
+                physical_resource_id=cr.PhysicalResourceId.of("deployment_time:"+ str(time.time()))
+            ),
+            policy=cr.AwsCustomResourcePolicy.from_sdk_calls(
+                resources=cr.AwsCustomResourcePolicy.ANY_RESOURCE
+            ),
+            role=role_custom_resource
+        )
+        cr_populate_webapp_env.node.add_dependency(api_key)
+        cr_populate_webapp_env.node.add_dependency(api)
+        cr_populate_webapp_env.node.add_dependency(s3_demo_web_app_bucket)
+        

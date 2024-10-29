@@ -25,7 +25,7 @@ def downloadNews(newsapikey):
             news_article.parse()
             text = news_article.text
 
-            content = f"<date>{formatted_date}</date><title>{title}</title><text>{text}</text>"
+            content = f"<date>{formatted_date}</date><title>{title}</title><text>{text}</text><url>{article["url"]}</url>"
 
             saveToS3(content)
         except Exception as e:

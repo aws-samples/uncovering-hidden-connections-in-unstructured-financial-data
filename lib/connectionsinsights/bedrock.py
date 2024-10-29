@@ -189,7 +189,8 @@ def getTextWithinTags(text,tags):
     while response == "" and counter < 5:
         end = text.rfind("</"+tags+">",0, start)
         start = text.rfind("<"+tags+">",0, start)
-        response = text[start+len("<"+tags+">") : end].strip()
+        if start > -1 and end > -1:
+            response = text[start+len("<"+tags+">") : end].strip()
         counter += 1
         if len(response) > 0:
             break

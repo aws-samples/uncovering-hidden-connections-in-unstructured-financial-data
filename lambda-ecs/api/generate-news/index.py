@@ -35,6 +35,7 @@ Print the generated financial news article in the following format:
 <date></date>
 <title></title>
 <text>[THIS IS A FICTIONAL NEWS FOR TESTING PURPOSES ONLY] </text>
+<url>N/A</url>
 </news>
          """.format(entitiesPrompt=entitiesPrompt if interested == "YES" else "", date=date)},
          {"role":"assistant","content":""}

@@ -1,6 +1,7 @@
 import json
 import boto3
 import os
+from boto3.dynamodb.conditions import Attr
 
 cors_headers = {
     'Access-Control-Allow-Origin': '*',
@@ -13,7 +14,9 @@ def lambda_handler(event, context):
     table = dynamodb.Table(os.environ["DDBTBL_NEWS"])
     httpMethod = event['httpMethod']
     if httpMethod == "GET":
-        response = table.scan()
+        response = table.scan(
+            FilterExpression=Attr('hide_news').not_exists() | Attr('hide_news').eq("FALSE")
+        )
         items = response.get('Items', [])
     
         # Extract relevant news data

@@ -3,6 +3,8 @@ import urllib.parse
 import boto3 
 import uuid
 import os
+import time
+from datetime import datetime
 
 from connectionsinsights.bedrock import (
     queryBedrockStreaming,
@@ -19,6 +21,10 @@ from connectionsinsights.neptune import (
     findVertexWithinNHops,
     GraphConnect  
 )
+
+s3 = boto3.client('s3')
+dynamodb = boto3.resource('dynamodb')
+table = dynamodb.Table(os.environ["DDBTBL_NEWS"])
 
 def qb_extractDataFromArticle(article):
     format = """
@@ -93,11 +99,9 @@ Based on the impact of the news to <news_entity> and the <path> provided, perfor
 
 def processArticle(article):
     g, connection = GraphConnect()
-    dynamodb = boto3.resource('dynamodb')
     value_of_n = getN() 
     entities = qb_extractDataFromArticle(article)
     entities = uppercase(json.loads(entities))
-    table = dynamodb.Table(os.environ["DDBTBL_NEWS"])
     paths = []
     for entity in entities:
         pathsArray = findVertexWithinNHops(
@@ -119,38 +123,73 @@ def processArticle(article):
                 "sentiment_explanation": entity["SENTIMENT_EXPLANATION"],
                 "paths": pathsArray,
             })
+    
+    current_timestamp = time.time()
+    dt_object = datetime.fromtimestamp(current_timestamp)
+    formatted_time = dt_object.strftime("%Y-%m-%d %H:%M")
+    
     table.put_item(
         Item={
             'id': str(uuid.uuid4()),
             'date': getTextWithinTags(article, "date"),
             'title': getTextWithinTags(article, "title"),
             'text': getTextWithinTags(article, "text"),
+            'url': getTextWithinTags(article, "url"),
+            'timestamp': formatted_time,
             'interested': "YES" if len(paths) > 0 else "NO",
             'paths': paths
         }
     )
     connection.close()
+    
+def isValidJson(text):
+    try:
+        json.loads(text)
+        return True
+    except:
+        return False
 
 def lambda_handler(event, context):
     try:
-        body = json.loads(event["Records"][0]["body"])
-        s3_bucket = body["Records"][0]["s3"]["bucket"]["name"]
-        s3_key = body["Records"][0]["s3"]["object"]["key"]
+        body = event["Records"][0]["body"]
+        if isValidJson(body):
+            # process news file
+            body = json.loads(body)
+            s3_bucket = body["Records"][0]["s3"]["bucket"]["name"]
+            s3_key = body["Records"][0]["s3"]["object"]["key"]
+            
+            s3_key_decoded = urllib.parse.unquote_plus(s3_key)
+            response = s3.get_object(Bucket=s3_bucket, Key=s3_key_decoded)
+            file_content = response['Body'].read().decode('utf-8')
         
-        s3 = boto3.client('s3')
-        s3_key_decoded = urllib.parse.unquote_plus(s3_key)
-        response = s3.get_object(Bucket=s3_bucket, Key=s3_key_decoded)
-        file_content = response['Body'].read().decode('utf-8')
-        
-        processArticle(file_content)
-        s3.delete_object(Bucket=s3_bucket, Key=s3_key_decoded)
+            processArticle(file_content)
+            s3.delete_object(Bucket=s3_bucket, Key=s3_key_decoded)
+        else:
+            # re-process existing news article in DynamoDB
+
+            response = table.get_item(Key={"id": body})
+            
+            if 'Item' in response:
+                file_content = """
+                <date>{date}</date>
+                <title>{title}</title>
+                <text>{text}</text>
+                <url>{url}</url>
+                """.format(date=response['Item']['date'], 
+                           title=response['Item']['title'],  
+                           text=response['Item']['text'],
+                           url=response['Item']['url'])
+                processArticle(file_content)
+                table.delete_item(Key={"id": body})
+            else:
+                print("Item not found:", body)
         
         return {
             'statusCode': 200,
             'body': json.dumps('Success!')
         }
     except Exception as e: # clear unintended queue messages such as s3:TestEvent
-        print(e)
+        print(e, event)
         return {
             'statusCode': 200,
             'body': event

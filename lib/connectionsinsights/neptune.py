@@ -30,38 +30,46 @@ from connectionsinsights.utils import (
 # ██   ████ ███████ ██         ██     ██████  ██   ████ ███████ 
 
 
-def GraphConnect():
-    # Create Connection
-    global g
-    global connection
-    statics.load_statics(globals())    
-    database_url = 'wss://'+os.environ["NEPTUNE_ENDPOINT"]+'/gremlin'
+def GraphConnect(counter=1):
+    try:
+        # Create Connection
+        global g
+        global connection
+        statics.load_statics(globals())    
+        database_url = 'wss://'+os.environ["NEPTUNE_ENDPOINT"]+'/gremlin'
 
-    service = 'neptune-db'
-    method = 'GET'
+        service = 'neptune-db'
+        method = 'GET'
 
-    access_key = os.environ['AWS_ACCESS_KEY_ID']
-    secret_key = os.environ['AWS_SECRET_ACCESS_KEY']
-    region = os.environ['AWS_REGION']
-    session_token = os.environ['AWS_SESSION_TOKEN']
-    
-    creds = SimpleNamespace(
-        access_key=access_key, secret_key=secret_key, token=session_token, region=region,
-    )
+        access_key = os.environ['AWS_ACCESS_KEY_ID']
+        secret_key = os.environ['AWS_SECRET_ACCESS_KEY']
+        region = os.environ['AWS_REGION']
+        session_token = os.environ['AWS_SESSION_TOKEN']
+        
+        creds = SimpleNamespace(
+            access_key=access_key, secret_key=secret_key, token=session_token, region=region,
+        )
 
-    request = AWSRequest(method=method, url=database_url, data=None)
-    SigV4Auth(creds, service, region).add_auth(request)
+        request = AWSRequest(method=method, url=database_url, data=None)
+        SigV4Auth(creds, service, region).add_auth(request)
 
-    connection = DriverRemoteConnection(
-        database_url,
-        'g',
-        pool_size=1,
-        headers=dict(request.headers.items()),
-        ssl=True
-    )
-    g = traversal().withRemote(connection)
+        connection = DriverRemoteConnection(
+            database_url,
+            'g',
+            pool_size=1,
+            headers=dict(request.headers.items()),
+            ssl=True
+        )
+        g = traversal().withRemote(connection)
 
-    return g, connection
+        return g, connection
+    except Exception as e:
+        if counter <= 3:
+            return GraphConnect(counter+1)
+        else:
+            print("GraphConnect connection exception")
+            raise e
+            
 
 def getEntities():
     results = g.V().elementMap().toList()

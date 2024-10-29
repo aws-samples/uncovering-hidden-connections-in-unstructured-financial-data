@@ -23,8 +23,19 @@ function App() {
   const [searchInput, setSearchInput] = useState('');
   const [isClickedGeneratingNews, setIsClickedGeneratingNews] = useState(false);
   const [isClickedDownloadingNews, setIsClickedDownloadingNews] = useState(false);
+  const [isClickedReprocessNews, setIsClickedReprocessNews] = useState(false);
   const [isLoadingSettingsData, setIsLoadingSettingsData] = useState(false);
   const [showInterestedOnly, setShowInterestedOnly] = useState(false);
+
+
+  useEffect(() => { // set API endpoint & API key from environment
+    setApiEndpoint(window.env.API_GATEWAY_ENDPOINT.replace(/^https:\/\//, ''))
+    setApiKey(window.env.API_GATEWAY_APIKEY)
+  }, []);
+  
+  useEffect(() => { // refresh settings
+    loadSettingsData();
+  }, [apiEndpoint, apiKey]);
 
   // refresh news data every 1 second
   useEffect(() => {
@@ -37,6 +48,39 @@ function App() {
   }, [apiEndpoint, apiKey]);
 
   const headers = { headers: { 'x-api-key': apiKey } }
+
+  // Re-process news
+  const reprocessNews = async () => {
+    if (!apiEndpoint || !apiKey) {      
+      notification.error({
+        placement: 'bottomRight',
+        message: 'API Endpoint or API Key is missing or empty.',
+        duration: 5,
+        icon: <ExclamationCircleOutlined style={{ color: 'red' }}/>
+      });
+    } else {
+      try {
+        axios.get(`https://${apiEndpoint}/reprocessnews`, headers);
+        notification.success({
+          placement: 'bottomRight',
+          message: 'Reprocessing enriched news',
+          description: 'News reprocessing in progress.. Enriched news will be displayed as it gets updated.',
+          duration: 10,
+        });
+        setIsClickedReprocessNews(true);
+        setTimeout(() => {
+          setIsClickedReprocessNews(false)
+        }, 10000) //10 seconds
+      } catch (error) {
+        notification.error({
+          placement: 'bottomRight',
+          message: 'Error reprocessing news',
+          description: 'Error reprocessing news',
+          duration: 5,
+        });
+      }
+    }    
+  }
 
   // Load news data 
   const getData = async () => {
@@ -112,14 +156,6 @@ function App() {
   // Refreshing of settings data
   const loadSettingsData = async () => {
     setIsLoadingSettingsData(true)
-    if (!apiEndpoint || !apiKey) {      
-      notification.error({
-        placement: 'bottomRight',
-        message: 'API Endpoint or API Key is missing or empty.',
-        duration: 5,
-        icon: <ExclamationCircleOutlined style={{ color: 'red' }}/>
-      });
-    }
 
     try {
       if (apiEndpoint.trim() !== "" && apiKey.trim() !== "") {
@@ -338,12 +374,20 @@ function App() {
               Settings
             </Col>
             <Col span={12} style={{ textAlign: 'right' }}>
-              <Button type="primary" style={{ backgroundColor: 'orange', borderColor: 'orange' }} onClick={loadSettingsData} disabled={isLoadingSettingsData}>
-                {
-                  isLoadingSettingsData ? <Space>Refreshing <LoadingOutlined spin/></Space> : 
-                  <div style={{ fontWeight: 'bold', color: 'white' }}>Refresh Settings</div>
-                }
-              </Button>
+              <Space>
+                <Button type="primary" style={{ backgroundColor: 'orange', borderColor: 'orange' }} onClick={reprocessNews} disabled={isClickedReprocessNews}>
+                  {
+                    isClickedReprocessNews ? <Space>Reprocessing <LoadingOutlined spin/></Space> : 
+                    <div style={{ fontWeight: 'bold', color: 'white' }}>Re-process News</div>
+                  }
+                </Button>
+                <Button type="primary" style={{ backgroundColor: 'orange', borderColor: 'orange' }} onClick={loadSettingsData} disabled={isLoadingSettingsData}>
+                  {
+                    isLoadingSettingsData ? <Space>Refreshing <LoadingOutlined spin/></Space> : 
+                    <div style={{ fontWeight: 'bold', color: 'white' }}>Refresh Settings</div>
+                  }
+                </Button>
+              </Space>
             </Col>
           </Row>
         }

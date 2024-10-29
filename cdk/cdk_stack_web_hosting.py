@@ -7,6 +7,7 @@ from aws_cdk import (
     CfnOutput,
     Stack,
     aws_wafv2 as waf,
+    Duration,
 )
 from constructs import Construct
 import time
@@ -64,7 +65,7 @@ class CdkStackWebHosting(Stack):
         # ██ ███ ██ ██      ██   ██     ██   ██ ██    ██      ██    ██    ██ ██  ██ ██ ██    ██ 
         #  ███ ███  ███████ ██████      ██   ██  ██████  ███████    ██    ██ ██   ████  ██████  
 
-        # Create S3 Bucket & CloudFront for hosting demo web application
+        # # Create S3 Bucket & CloudFront for hosting demo web application
         s3_demo_web_app_bucket = s3.Bucket(self, f"{project_name}-demo-web-app",
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True,
@@ -72,12 +73,14 @@ class CdkStackWebHosting(Stack):
             enforce_ssl=True,
             versioned=True,
         )
-
-        # # Deploy the React app to S3 bucket
+        self.s3_demo_web_app_bucket = s3_demo_web_app_bucket
+        
+        # Deploy the React app to S3 bucket
         s3_deployment = s3d.BucketDeployment(self, f"{project_name}-DemoWebAppDeployment",
             sources=[s3d.Source.asset("ui/build")],
             destination_bucket=s3_demo_web_app_bucket,
             retain_on_delete=False,
+            metadata={"deployment_time": str(time.time())}
         )
 
         # Create OAI for access management
@@ -105,7 +108,14 @@ class CdkStackWebHosting(Stack):
                         s3_bucket_source=s3_demo_web_app_bucket,
                         origin_access_identity=oai
                     ),
-                    behaviors=[cloudfront.Behavior(is_default_behavior=True)]
+                    behaviors=[
+                        cloudfront.Behavior(is_default_behavior=True,
+                                            min_ttl=Duration.seconds(0),
+                                            max_ttl=Duration.seconds(0),
+                                            default_ttl=Duration.seconds(0),
+                                            path_pattern="ttl0",
+                                            compress=True                                             ),
+                    ]
                 )
             ],
             default_root_object="index.html",
