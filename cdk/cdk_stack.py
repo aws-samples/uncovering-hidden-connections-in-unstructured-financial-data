@@ -1548,6 +1548,7 @@ EOF""".format(NEPTUNE_ENDPOINT=neptune_cluster.cluster_endpoint.socket_address, 
                 ),
             ],
             detailed_monitoring=True,
+            require_imdsv2=False,
         )
         output("Graph Explorer", f"https://{ec2_instance.instance_public_ip}/explorer")
         
