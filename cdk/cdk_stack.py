@@ -1493,6 +1493,16 @@ class CdkStack(Stack):
                 f"arn:aws:neptune-db:{self.region}:{self.account}:{neptune_cluster.cluster_resource_identifier}/*"
             ]
         ))
+        
+        explorer_role.add_to_policy(iam.PolicyStatement(
+            actions=[
+                "ecr-public:GetAuthorizationToken", 
+                "sts:GetServiceBearerToken",
+            ],
+            resources=[
+                f"*"
+            ]
+        ))
 
         # Create User Data script to set up Graph Explorer
         user_data = ec2.UserData.for_linux()
@@ -1506,7 +1516,7 @@ class CdkStack(Stack):
         user_data.add_commands("""sudo dnf install -y docker""")
         user_data.add_commands("""sudo systemctl start docker""")
         user_data.add_commands("""sudo systemctl enable docker""")
-        user_data.add_commands("""aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws""")
+        user_data.add_commands(f"aws ecr-public get-login-password --region {self.region} | docker login --username AWS --password-stdin public.ecr.aws")
         user_data.add_commands("""docker pull public.ecr.aws/neptune/graph-explorer""")
         user_data.add_commands("""cd /home/ec2-user""")
         user_data.add_commands("""
