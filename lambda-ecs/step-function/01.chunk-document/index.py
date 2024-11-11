@@ -16,6 +16,14 @@ from connectionsinsights.bedrock import (
     convertMessagesToTextCompletion
 )
 
+from connectionsinsights.textract import extract_text
+
+s3 = boto3.client('s3')
+dynamodb = boto3.resource('dynamodb')
+dynamodb_table_name = os.environ["DDBTBL_INGESTION"]
+table = dynamodb.Table(dynamodb_table_name)
+extractor = os.environ.get("EXTRACTOR", "TEXTRACT")
+
 def qb_generateDocumentSummary(chunks,summaryChunkCount):
     text = ' '.join([chunks[i]["text"] for i in range(int(summaryChunkCount))])
     try:
@@ -79,15 +87,11 @@ def qb_generateDocumentSummary(chunks,summaryChunkCount):
 
         
     
-def splitDocument(fileName):
+def splitDocument(arr_text):
     maxTokensPerChunk = 500 # estimate 1 space = 1 word = 1 token
     
-    # read in PDF file using pypdf
-    pdfFileObj = open(fileName, 'rb')
-    pdfReader = pypdf.PdfReader(pdfFileObj)
-    
     # get number of pages
-    numPages = int(str(len(pdfReader.pages)))
+    numPages = len(arr_text)
     
     text = ""
     tokenCount = 0
@@ -96,11 +100,11 @@ def splitDocument(fileName):
     chunks = []
     
     # loop through each page and get text
-    while currentPage <= numPages:
-        pageText = pdfReader.pages[currentPage-1].extract_text()
+    for pageText in arr_text:
         pageText = pageText.replace("\xa0", " ") # replace special characters with spaces
         pageText = pageText.replace("\n", " ") # replace new line characters with spaces
-        pageText = pageText.replace("  ", " ") # remove any extra spaces    
+        pageText = pageText.replace("  ", " ") # remove any extra spaces
+        pageText = pageText.replace("\"", "") # remove " character
         pageToken = pageText.count(" ")
         if tokenCount + pageToken <= maxTokensPerChunk:
             text += pageText + "\n"
@@ -129,29 +133,41 @@ def splitDocument(fileName):
             )
             break
         currentPage += 1
-        
-    
-    # close PDF file
-    pdfFileObj.close()
-    
+           
     return chunks
 
+def extract_document(s3_bucket, s3_key):
+    if extractor == "TEXTRACT":
+        return extract_text(s3_bucket, s3_key)
+    elif extractor == "PYPDF":
+        # Download the file from S3
+        local_file_path = os.path.join(tempfile.gettempdir(), s3_key.split("/")[-1])
+        s3.download_file(s3_bucket, s3_key, local_file_path)
+        
+        # read in PDF file using pypdf
+        pdfFileObj = open(local_file_path, 'rb')
+        pdfReader = pypdf.PdfReader(pdfFileObj)
+        
+        arr_text = []
+        for page in pdfReader.pages:
+            arr_text.append(page.extract_text())
+        
+        # close PDF file
+        pdfFileObj.close()
+        os.remove(local_file_path)
+        return arr_text
+    else:
+        raise Exception("Invalid extractor")
+
 def lambda_handler(event, context):
-    s3 = boto3.client('s3')
-    dynamodb_table_name = os.environ["DDBTBL_INGESTION"]
-    dynamodb = boto3.resource('dynamodb')
-    table = dynamodb.Table(dynamodb_table_name)
     uuids = []
     
     S3_BUCKET = event["StateInfo"]["S3File"]["S3_BUCKET"].strip()
     S3_KEY = event["StateInfo"]["S3File"]["S3_KEY"].strip()
     S3_KEY = urllib.parse.unquote_plus(S3_KEY)
-
-    # Download the file from S3
-    local_file_path = os.path.join(tempfile.gettempdir(), S3_KEY.split("/")[-1])
-    s3.download_file(S3_BUCKET, S3_KEY, local_file_path)
-
-    chunks = splitDocument(local_file_path)
+    
+    arr_text = extract_document(S3_BUCKET, S3_KEY)
+    chunks = splitDocument(arr_text)
     maxSummaryChunkCount = 40 # max number of chunks to use for summary; 1 chunk ~ 1 page
     summary = json.loads(qb_generateDocumentSummary(chunks,min(maxSummaryChunkCount,len(chunks)-1)))
     summary["MAIN_ENTITY"]["ATTRIBUTES"] = summary["MAIN_ENTITY"]["ATTRIBUTES"] + [{ "SOURCE":  S3_KEY.split("/")[-1].upper() }]
@@ -167,7 +183,6 @@ def lambda_handler(event, context):
             i = i + 1
     deleteAttribute(summaryShort, "SUMMARY_OF_BUSINESS_PERFORMANCE")
     deleteAttribute(summaryShort, "SUMMARY_OF_BUSINESS_STRATEGY")
-    
     for chunk in chunks:
         uuids.append({
             "id": chunk["id"],
@@ -181,9 +196,6 @@ def lambda_handler(event, context):
             'text': str(chunk['text']),
             'ttl_timestamp': int(time.time()) + 7200
         })
-    
-    os.remove(local_file_path)
-
     return {
         "uuid": uuids,
         "summary": summary

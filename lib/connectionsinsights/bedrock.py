@@ -198,7 +198,9 @@ def getTextWithinTags(text,tags):
     return response
 
 def cleanJSONString(text):
-    return re.sub(r'\bNULL\b', '""', text, flags=re.IGNORECASE)
+    # Replace 'NULL' with empty string
+    cleaned_text = re.sub(r'\bNULL\b', '""', text, flags=re.IGNORECASE)
+    return cleaned_text
 
 def generateEmbeddings(prompt):
     prompt = " ".join(prompt.split()[0:min(2500,len( prompt.split() ))])

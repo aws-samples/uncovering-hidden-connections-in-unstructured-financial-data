@@ -508,7 +508,21 @@ class CdkStack(Stack):
                             ]
                         )
                     ]
-                )                
+                ),
+                "inline_policy_textract": iam.PolicyDocument(
+                    statements=[
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=[
+                                "textract:StartDocumentAnalysis",
+                                "textract:GetDocumentAnalysis"
+                            ],
+                            resources=[
+                                f"*"
+                            ]
+                        )
+                    ]
+                )             
             }
         )
         role_lambda.apply_removal_policy(RemovalPolicy.DESTROY)
@@ -747,7 +761,8 @@ class CdkStack(Stack):
             role=role_lambda,
             environment={
                 'DDBTBL_INGESTION': ddbtbl_ingestion.table_name,
-                'DDBTBL_PROMPTS': ddbtbl_prompts.table_name
+                'DDBTBL_PROMPTS': ddbtbl_prompts.table_name,
+                'EXTRACTOR': 'TEXTRACT'
             },
             tracing=_lambda.Tracing.ACTIVE, 
             memory_size=10240
@@ -1194,7 +1209,6 @@ class CdkStack(Stack):
                 state_name="Chunk Document",
                 result_path="$.output",
                 lambda_function=fn_step_function_chunk_doc,
-                task_timeout=sfn.Timeout.duration(Duration.minutes(4))
             )
             task.add_retry(
                 errors=["States.ALL"],

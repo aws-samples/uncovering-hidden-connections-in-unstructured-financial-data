@@ -26,7 +26,7 @@ Such second or third-order order impact are difficult to identify and even harde
 3. An Amazon EventBridge time based event runs every minute to invoke an AWS Lambda function.  The function will retrieve the next available queue message from SQS and start the execution of an AWS Step Function asynchronously.
 4. A step function state machine executes through a series of tasks to process the uploaded document by extracting out key information and inserting them into your knowledge graph.
     * Tasks
-        1. Downloads proxy/annual/10k report file (PDF) from S3 and splits it into multiple smaller text chunks (~1000 words) for processing.  Store the text chunks in Amazon DynamoDB.
+        1. Using Amazon Textract, extract out text content from the proxy/annual/10k report file (PDF) in Amazon S3 and splits it into multiple smaller text chunks for processing.  Store the text chunks in Amazon DynamoDB.
         2. Using Anthropic’s Claude v3 Sonnet on Amazon Bedrock, process the first few text chunks to determine the main entity that the report is referring to, together with relevant attributes (e.g. industry).
         3. Retrieves the text chunks from DynamoDB and for each text chunk, invokes a lambda function to extract out entities (company/person), and its relationship (customer/supplier/partner/competitor/director) to the main entity using Amazon Bedrock.
         4. Consolidate all extracted information
@@ -97,6 +97,7 @@ You may deploy the two stacks into different regions, or into the same region (i
 ## AWS services used
 - Amazon Bedrock
 - Amazon Neptune
+- Amazon Textract
 - Amazon DynamoDB
 - AWS Step Function
 - AWS Lambda
