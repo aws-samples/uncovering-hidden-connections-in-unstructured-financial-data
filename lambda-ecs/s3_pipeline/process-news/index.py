@@ -103,6 +103,8 @@ def processArticle(article):
     entities = qb_extractDataFromArticle(article)
     entities = uppercase(json.loads(entities))
     paths = []
+    interested_entities = set()
+    
     for entity in entities:
         pathsArray = findVertexWithinNHops(
             entity["LABEL"],
@@ -123,6 +125,9 @@ def processArticle(article):
                 "sentiment_explanation": entity["SENTIMENT_EXPLANATION"],
                 "paths": pathsArray,
             })
+            
+            for path in pathsArray:
+                interested_entities.add(path["interested_entity"])
     
     current_timestamp = time.time()
     dt_object = datetime.fromtimestamp(current_timestamp)
@@ -137,7 +142,8 @@ def processArticle(article):
             'url': getTextWithinTags(article, "url"),
             'timestamp': formatted_time,
             'interested': "YES" if len(paths) > 0 else "NO",
-            'paths': paths
+            'paths': paths,
+            'interested_entities': list(interested_entities)
         }
     )
     connection.close()
