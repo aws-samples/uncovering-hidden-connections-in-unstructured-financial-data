@@ -54,7 +54,7 @@ def saveToS3(article):
 
 def generateNews(num_of_articles):
     g, connection = GraphConnect()
-    entityList = getEntities()
+    entityList = getEntities(g)
     for i in range(0, num_of_articles):
         entities = []
         date = (datetime.date.today() - datetime.timedelta(days=random.randint(1, 100))).strftime("%d %b %Y")
@@ -71,6 +71,7 @@ def generateNews(num_of_articles):
                 })
         article = qb_generateArticle(date, interested, entities)
         saveToS3(article)
+    
     connection.close()
     return None
 

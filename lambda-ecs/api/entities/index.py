@@ -19,7 +19,7 @@ def lambda_handler(event, context):
     
     if httpMethod == "GET":
         g, connection = GraphConnect()
-        entities = getEntities()
+        entities = getEntities(g)
         connection.close()
         return {
             'statusCode': 200,
@@ -31,7 +31,7 @@ def lambda_handler(event, context):
         try:
             g, connection = GraphConnect()
             body = json.loads(event["body"])
-            updateEntityInterested(body["ID"], body["INTERESTED"])
+            updateEntityInterested(g, body["ID"], body["INTERESTED"])
             connection.close()
             return {
                 'statusCode': 200,

@@ -20,7 +20,7 @@ def getAttributesArray(datadict, exclusionarray):
             attributes.append({ attributeKey : datadict[attributeKey] })
     return attributes
 
-def insertDirectors(finalDirectors, main_entity_id, main_entity_name):
+def insertDirectors(g,finalDirectors, main_entity_id, main_entity_name):
     # Create Directors
     for empKey in finalDirectors.keys():
         try:
@@ -30,9 +30,9 @@ def insertDirectors(finalDirectors, main_entity_id, main_entity_name):
             name = empKey
             attributes = getAttributesArray(finalDirectors[empKey], ["OTHER_ASSOCIATIONS", "ROLE"])
             edges = [empKey+" is a director of (ROLE: "+",".join(finalDirectors[empKey]["ROLE"])+") "+main_entity_name]
-            id = getOrCreateID(label, name, attributes, edges)
+            id = getOrCreateID(g,label, name, attributes, edges)
             edge_property_dict = { "ROLE": ",".join(finalDirectors[empKey]["ROLE"]), "SOURCE": ",".join(finalDirectors[empKey]["SOURCE"]) }
-            addOrUpdateEdge(id, "is a director of", main_entity_id, edge_property_dict )
+            addOrUpdateEdge(g,id, "is a director of", main_entity_id, edge_property_dict )
             other_associations = finalDirectors[empKey]["OTHER_ASSOCIATIONS"]            
             for other_association in other_associations:
                 try:
@@ -41,9 +41,9 @@ def insertDirectors(finalDirectors, main_entity_id, main_entity_name):
                     attributes = getAttributesArray(other_association, ["ROLE", "COMPANY_NAME"])
                     attributes.append({"SOURCE": ",".join(finalDirectors[empKey]["SOURCE"])})
                     edges = [empKey+" is an employee/director of (ROLE: "+other_association["ROLE"]+") "+other_association["COMPANY_NAME"]]
-                    association_id = getOrCreateID("COMPANY", other_association["COMPANY_NAME"], attributes, edges)
+                    association_id = getOrCreateID(g,"COMPANY", other_association["COMPANY_NAME"], attributes, edges)
                     edge_property_dict = { "ROLE": other_association["ROLE"], "SOURCE": ",".join(finalDirectors[empKey]["SOURCE"]) }
-                    addOrUpdateEdge(id, "is an employee/director of", association_id, edge_property_dict )
+                    addOrUpdateEdge(g,id, "is an employee/director of", association_id, edge_property_dict )
                 except Exception as e:
                     print(e, empKey, other_association)
                     continue
@@ -51,7 +51,7 @@ def insertDirectors(finalDirectors, main_entity_id, main_entity_name):
             print(e, empKey, finalDirectors[empKey])
             continue
 
-def insertCustomers(finalCustomers, main_entity_id, main_entity_name):
+def insertCustomers(g,finalCustomers, main_entity_id, main_entity_name):
     # Create Customers
     for custKey in finalCustomers.keys():
         try:
@@ -61,14 +61,14 @@ def insertCustomers(finalCustomers, main_entity_id, main_entity_name):
             name = custKey
             attributes = getAttributesArray(finalCustomers[custKey], ["PRODUCTS_USED"])
             edges = [custKey+" is a customer of (PRODUCTS_USED:"+",".join(finalCustomers[custKey]["PRODUCTS_USED"])+") "+main_entity_name]
-            id = getOrCreateID(label, name, attributes, edges)
+            id = getOrCreateID(g,label, name, attributes, edges)
             edge_property_dict = { "PRODUCTS_USED": ",".join(finalCustomers[custKey]["PRODUCTS_USED"]), "SOURCE": ",".join(finalCustomers[custKey]["SOURCE"]) }
-            addOrUpdateEdge(id, "is a customer of", main_entity_id, edge_property_dict )
+            addOrUpdateEdge(g,id, "is a customer of", main_entity_id, edge_property_dict )
         except Exception as e:
             print(e, custKey, finalCustomers[custKey])
             continue
 
-def insertSuppliers(finalSuppliers, main_entity_id, main_entity_name):
+def insertSuppliers(g,finalSuppliers, main_entity_id, main_entity_name):
     # Create Suppliers
     for suppKey in finalSuppliers.keys():
         try:
@@ -78,14 +78,14 @@ def insertSuppliers(finalSuppliers, main_entity_id, main_entity_name):
             name = suppKey
             attributes = getAttributesArray(finalSuppliers[suppKey], ["RELATIONSHIP"])
             edges = [suppKey+" is a supplier of (RELATIONSHIP:"+",".join(finalSuppliers[suppKey]["RELATIONSHIP"])+") "+main_entity_name]
-            id = getOrCreateID(label, name, attributes, edges)
+            id = getOrCreateID(g,label, name, attributes, edges)
             edge_property_dict = { "RELATIONSHIP": ",".join(finalSuppliers[suppKey]["RELATIONSHIP"]), "SOURCE": ",".join(finalSuppliers[suppKey]["SOURCE"]) }
-            addOrUpdateEdge(id, "is a supplier/partner of", main_entity_id, edge_property_dict )
+            addOrUpdateEdge(g,id, "is a supplier/partner of", main_entity_id, edge_property_dict )
         except Exception as e:
             print(e, suppKey, finalSuppliers[suppKey])
             continue
 
-def insertCompetitors(finalCompetitors, main_entity_id, main_entity_name):
+def insertCompetitors(g,finalCompetitors, main_entity_id, main_entity_name):
     # Create Competitors
     for compKey in finalCompetitors.keys():
         try:
@@ -95,9 +95,9 @@ def insertCompetitors(finalCompetitors, main_entity_id, main_entity_name):
             name = compKey
             attributes = getAttributesArray(finalCompetitors[compKey], ["COMPETING_IN"])
             edges = [compKey+" is a competitor of (COMPETING_IN:"+",".join(finalCompetitors[compKey]["COMPETING_IN"])+") "+main_entity_name]
-            id = getOrCreateID(label, name, attributes, edges)
+            id = getOrCreateID(g,label, name, attributes, edges)
             edge_property_dict = { "COMPETING_IN": ",".join(finalCompetitors[compKey]["COMPETING_IN"]), "SOURCE": ",".join(finalCompetitors[compKey]["SOURCE"]) }
-            addOrUpdateEdge(id, "is a competitor of", main_entity_id, edge_property_dict )
+            addOrUpdateEdge(g,id, "is a competitor of", main_entity_id, edge_property_dict )
         except Exception as e:
             print(e, compKey, finalCompetitors[compKey])
             continue
@@ -184,15 +184,15 @@ def main():
         key, value = list(attribute.keys())[0], list(attribute.values())[0]
         if isinstance(value, list):
             attribute[key] = ",".join(value)
-    main_entity_id = getOrCreateID("COMPANY", main_entity_name, attributes, allEdges)
+    main_entity_id = getOrCreateID(g,"COMPANY", main_entity_name, attributes, allEdges)
     
-    insertCustomers(finalCustomers, main_entity_id, main_entity_name)
+    insertCustomers(g,finalCustomers, main_entity_id, main_entity_name)
     customerKeys.append(",".join(finalCustomers.keys()))
-    insertSuppliers(finalSuppliers, main_entity_id, main_entity_name)
+    insertSuppliers(g,finalSuppliers, main_entity_id, main_entity_name)
     supplierKeys.append(",".join(finalSuppliers.keys()))
-    insertCompetitors(finalCompetitors, main_entity_id, main_entity_name)
+    insertCompetitors(g,finalCompetitors, main_entity_id, main_entity_name)
     competitorKeys.append(",".join(finalCompetitors.keys()))
-    insertDirectors(finalDirectors, main_entity_id, main_entity_name)
+    insertDirectors(g,finalDirectors, main_entity_id, main_entity_name)
     directorKeys.append(",".join(finalDirectors.keys()))
 
     connection.close()

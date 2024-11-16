@@ -107,6 +107,7 @@ def processArticle(article):
     
     for entity in entities:
         pathsArray = findVertexWithinNHops(
+            g,
             entity["LABEL"],
             entity["NAME"],
             { "INDUSTRY": entity["INDUSTRY"] if "INDUSTRY" in entity else "" }, 

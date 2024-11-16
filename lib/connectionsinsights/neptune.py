@@ -30,11 +30,9 @@ from connectionsinsights.utils import (
 # ██   ████ ███████ ██         ██     ██████  ██   ████ ███████ 
 
 
-def GraphConnect(counter=1):
+def GraphConnect(retry=3):
     try:
         # Create Connection
-        global g
-        global connection
         statics.load_statics(globals())    
         database_url = 'wss://'+os.environ["NEPTUNE_ENDPOINT"]+'/gremlin'
 
@@ -56,7 +54,7 @@ def GraphConnect(counter=1):
         connection = DriverRemoteConnection(
             database_url,
             'g',
-            pool_size=1,
+            pool_size=10,
             headers=dict(request.headers.items()),
             ssl=True
         )
@@ -64,23 +62,23 @@ def GraphConnect(counter=1):
 
         return g, connection
     except Exception as e:
-        if counter <= 3:
-            return GraphConnect(counter+1)
+        if retry > 0:
+            return GraphConnect(retry-1)
         else:
             print("GraphConnect connection exception")
             raise e
             
 
-def getEntities():
+def getEntities(g):
     results = g.V().elementMap().toList()
     entities = [{ "ID": row[T.id], "LABEL": row[T.label], "NAME": row["NAME"], "INTERESTED": row["INTERESTED"] if "INTERESTED" in row else "NO" } for row in results]
     
     return entities
     
-def updateEntityInterested(ID, INTERESTED):
+def updateEntityInterested(g, ID, INTERESTED):
     results = g.V(ID).property(Cardinality.single, "INTERESTED", INTERESTED).next()
 
-def formatResultsFindVertex(results):
+def formatResultsFindVertex(g, results):
     response = []
     for result in results:
         vertex_id = result[T.id]
@@ -114,20 +112,20 @@ def formatResultsFindVertex(results):
         })
     return response
 
-def findVertexByLabelandName(label, name, exact_match):
+def findVertexByLabelandName(g, label, name, exact_match):
     if name is None:
         return []
     
     results = g.V().hasLabel(label).has('NAME', TextP.containing(name) if not exact_match else name).elementMap().toList()
-    return formatResultsFindVertex(results)
+    return formatResultsFindVertex(g, results)
     
-def findVertexByAcronym(label, name):
+def findVertexByAcronym(g, label, name):
     # when given acronym (e.g. AMD), searches for names that fits the acronym (e.g. ADVANCED MICRO DEVICES)
     pattern = r''.join([ f'{letter}\\w*\\s+' for letter in name ])
     regex_pattern = r'\b'+ pattern[:-3] + r'\b' # add ^ at the front and $ at the back if we want it to match strictly
 
     results = g.V().hasLabel(label).has('NAME', TextP.regex(regex_pattern)).elementMap().toList()
-    return formatResultsFindVertex(results)
+    return formatResultsFindVertex(g, results)
 
 def unionArraysByID(array_of_arrays):
     unique_dict = {}
@@ -142,22 +140,22 @@ def unionArraysByID(array_of_arrays):
     result = list(unique_dict.values())
     return result
 
-def getID(label, name, properties, edges):
+def getID(g, label, name, properties, edges):
     cleaned_name = clean_name(name)
     acronym = getAcronym(cleaned_name)
     sub_name = getSubName(cleaned_name)
 
     # Exact Match
-    exact_match = findVertexByLabelandName(label, cleaned_name, True)
+    exact_match = findVertexByLabelandName(g, label, cleaned_name, True)
 
     # Acronym Match - converts names into acronyms and search them (e.g. ADVANCED MICRO DEVICES -> AMD)
-    acronym_match = findVertexByLabelandName(label, acronym, True)
+    acronym_match = findVertexByLabelandName(g, label, acronym, True)
 
     # Substring Match
-    substring_match = findVertexByLabelandName(label, sub_name, False)
+    substring_match = findVertexByLabelandName(g, label, sub_name, False)
 
     # Acronym Search - searches by acronym (e.g. use AMD to search for ADVANCED MICRO DEVICES)
-    acronym_results = findVertexByAcronym(label, name)
+    acronym_results = findVertexByAcronym(g, label, name)
 
     matches = unionArraysByID([exact_match, acronym_match, substring_match, acronym_results])
 
@@ -166,7 +164,7 @@ def getID(label, name, properties, edges):
     else:
         return disambiguate({"LABEL": label, "NAME": cleaned_name, "PROPERTIES": properties, "EDGES": edges}, matches)
     
-def addOrUpdateEdge(source, edge_name, destination, edge_property_dict):
+def addOrUpdateEdge(g, source, edge_name, destination, edge_property_dict):
     exists = g.V(source).outE(edge_name).where(__.inV().hasId(destination)).elementMap().toList()
     if not exists:
         edge = g.V(source).addE(edge_name).to(__.V(destination))
@@ -200,7 +198,7 @@ def getSubName(name):
             return subname.strip()
     return None
 
-def createVertex(label, name, attributes):
+def createVertex(g, label, name, attributes):
     cleaned_name = clean_name(name)
     new_vertex = g.addV(label).property(Cardinality.single, 'NAME', cleaned_name)
     for attribute in attributes:
@@ -210,7 +208,7 @@ def createVertex(label, name, attributes):
     
     return created_vertex
 
-def updateVertex(id, attributes):
+def updateVertex(g, id, attributes):
     properties = g.V(id).elementMap().toList()[0]
     properties = { key : properties[key] for key in properties.keys() if key not in [T.id, T.label, 'NAME']}
     
@@ -226,26 +224,26 @@ def updateVertex(id, attributes):
                 vertex = vertex.property(Cardinality.single, key, ",".join(value))
     vertex.next()
 
-def getOrCreateID(label, name, attributes, edges):
+def getOrCreateID(g, label, name, attributes, edges):
     try:
-        existing_id = getID(label, name, attributes, edges)
+        existing_id = getID(g, label, name, attributes, edges)
         if existing_id:
-            updateVertex(existing_id, attributes)
+            updateVertex(g, existing_id, attributes)
             return existing_id
         else:
-            created_vertex = createVertex(label, name, attributes)
+            created_vertex = createVertex(g, label, name, attributes)
             return created_vertex.id
     except Exception as e:
         if "503, message='Invalid response status'".upper() in str(e).upper():
             time.sleep(random.randint(10,30))
             g, conn = GraphConnect()
-            return getOrCreateID(label, name, attributes, edges)
+            return getOrCreateID(g, label, name, attributes, edges)
         else:            
             raise Exception(e)
 
-def findVertexWithinNHops(label, name, properties, edges, N):
+def findVertexWithinNHops(g, label, name, properties, edges, N):
     ret = []
-    id = getID(label, name, properties, edges)
+    id = getID(g, label, name, properties, edges)
     if id:
         paths = g.V(id).has('INTERESTED', 'YES').path().by(__.elementMap()).toList()
         paths = paths + g.V(id).repeat(__.bothE().bothV().simplePath()).times(N).emit().has('INTERESTED', 'YES').path().by(__.elementMap()).toList()
