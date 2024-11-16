@@ -63,7 +63,7 @@ def qb_generateDocumentSummary(chunks,summaryChunkCount):
 
     6) Summarize the business strategy of the main entity.  Leave string value empty if you cannot identify any.
 
-    7) Print out the results in <results></results> tag using the following JSON format:
+    7) It is important that you print out the output within <results></results> xml tag using the following JSON format and ensure that the output is a valid JSON format.
     {sampleJSON}
     """.format(text=text, sampleJSON=sampleJSON)},
             {"role":"assistant", "content": ""}
