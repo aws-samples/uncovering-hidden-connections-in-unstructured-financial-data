@@ -391,7 +391,11 @@ class CdkStack(Stack):
                             effect=iam.Effect.ALLOW,
                             actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
                             resources=[
-                                f"arn:aws:bedrock:{self.region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0", 
+                                f"arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0", 
+                                f"arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0", 
+                                f"arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0", 
+                                f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/us.anthropic.claude-3-5-haiku-20241022-v1:0",
+                                f"arn:aws:bedrock:{self.region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0",
                                 f"arn:aws:bedrock:{self.region}::foundation-model/anthropic.claude-v2:1",
                                 f"arn:aws:bedrock:{self.region}::foundation-model/amazon.titan-embed-text-v1"
                             ]
@@ -780,7 +784,8 @@ class CdkStack(Stack):
             timeout=Duration.minutes(15),
             role=role_lambda,
             environment={
-                'DDBTBL_PROMPTS': ddbtbl_prompts.table_name
+                'DDBTBL_PROMPTS': ddbtbl_prompts.table_name,
+                'DDBTBL_INGESTION': ddbtbl_ingestion.table_name,
             }, 
             tracing=_lambda.Tracing.ACTIVE,
             memory_size=1024
@@ -952,7 +957,11 @@ class CdkStack(Stack):
                 effect=iam.Effect.ALLOW,
                 actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
                 resources=[
-                    f"arn:aws:bedrock:{self.region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0", 
+                    f"arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0", 
+                    f"arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0", 
+                    f"arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0", 
+                    f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/us.anthropic.claude-3-5-haiku-20241022-v1:0",
+                    f"arn:aws:bedrock:{self.region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0",
                     f"arn:aws:bedrock:{self.region}::foundation-model/anthropic.claude-v2:1",
                     f"arn:aws:bedrock:{self.region}::foundation-model/amazon.titan-embed-text-v1"
                 ]

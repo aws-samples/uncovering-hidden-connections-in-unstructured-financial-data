@@ -1,4 +1,8 @@
 import json
+import boto3
+import os
+import uuid
+import time
 
 from connectionsinsights.bedrock import (
     cleanJSONString,
@@ -7,6 +11,10 @@ from connectionsinsights.bedrock import (
     savePrompt,
     convertMessagesToTextCompletion
 )
+
+dynamodb = boto3.resource('dynamodb')
+dynamodb_table_name = os.environ["DDBTBL_INGESTION"]
+table = dynamodb.Table(dynamodb_table_name)
 
 def qb_extractChunkData(text, summary, id):
     responses = []
@@ -59,7 +67,7 @@ Using the text enclosed within <document></document> tag, perform the following 
 
 6) Be as complete as you can in your idenfication of all information, and include any mentioned information even if they were mentioned to be in the past.
 
-7) Print out the results in <results> tag using the following JSON format:
+7) It is important that you print out the output within <results></results> xml tag using the following JSON format and ensure that the output is a valid JSON format.
 {sampleJSON}
          """.format(main_entity=summary,text=text,sampleJSON=sampleJSON)},
          {"role":"assistant", "content": """"""}
@@ -89,11 +97,17 @@ def lambda_handler(event, context):
     results = qb_extractChunkData(text, json.dumps(summary), summary["MAIN_ENTITY"]["NAME"]+"->qb_extractChunkData->"+"(pg"+startPage+"-"+endPage+")->" )
 
     results = json.loads(results)
-    results["COMMERCIAL_PRODUCTS_OR_SERVICES"] = [ {**x, "SOURCE": source} for x in results["COMMERCIAL_PRODUCTS_OR_SERVICES"] ]
-    results["CUSTOMERS"] = [ {**x, "SOURCE": source} for x in results["CUSTOMERS"] ]
-    results["SUPPLIERS_OR_PARTNERS"] = [ {**x, "SOURCE": source} for x in results["SUPPLIERS_OR_PARTNERS"] ]
-    results["COMPETITORS"] = [ {**x, "SOURCE": source} for x in results["COMPETITORS"] ]
-    results["DIRECTORS"] = [ {**x, "SOURCE": source} for x in results["DIRECTORS"] ]
 
+    id = str(uuid.uuid4())
     
-    return json.dumps(results)
+    table.put_item(Item={
+        'id': id,
+        'COMMERCIAL_PRODUCTS_OR_SERVICES': [ {**x, "SOURCE": source} for x in results["COMMERCIAL_PRODUCTS_OR_SERVICES"] ],
+        'CUSTOMERS': [ {**x, "SOURCE": source} for x in results["CUSTOMERS"] ],
+        'SUPPLIERS_OR_PARTNERS': [ {**x, "SOURCE": source} for x in results["SUPPLIERS_OR_PARTNERS"] ],
+        'COMPETITORS': [ {**x, "SOURCE": source} for x in results["COMPETITORS"] ],
+        'DIRECTORS': [ {**x, "SOURCE": source} for x in results["DIRECTORS"] ],
+        'ttl_timestamp': int(time.time()) + 7200
+    })
+    
+    return id

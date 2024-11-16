@@ -8,6 +8,10 @@ from connectionsinsights.bedrock import (
     uppercase
 )
 
+dynamodb = boto3.resource('dynamodb')
+dynamodb_table_name = os.environ["DDBTBL_INGESTION"]
+table = dynamodb.Table(dynamodb_table_name)
+
 def convertToArray(data):
     if isinstance(data, str):
         return [ x.upper().strip() for x in data.split(",")]
@@ -26,14 +30,11 @@ def lambda_handler(event, context):
     raw_suppliers_or_partners = {}
     raw_competitors = {}
     raw_directors = {}
-
-    dynamodb = boto3.resource('dynamodb')
-    dynamodb_table_name = os.environ["DDBTBL_INGESTION"]    
-    table = dynamodb.Table(dynamodb_table_name)
     
     for chunk in chunks:
-        try:                
-            results = uppercase(json.loads(chunk))
+        try:
+            item = table.get_item(Key={"id": chunk})
+            results = uppercase(item["Item"])
             if "COMMERCIAL_PRODUCTS_OR_SERVICES" in results:
                 products = products | set([x['NAME'] for x in results['COMMERCIAL_PRODUCTS_OR_SERVICES']])        
             
