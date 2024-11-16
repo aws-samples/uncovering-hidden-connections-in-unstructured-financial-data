@@ -16,6 +16,12 @@ from datetime import datetime
 # ██   ██ ██      ██   ██ ██   ██ ██    ██ ██      ██  ██  
 # ██████  ███████ ██████  ██   ██  ██████   ██████ ██   ██ 
 
+CLAUDE_3_SONNET = "anthropic.claude-3-sonnet-20240229-v1:0"
+CLAUDE_3_5_HAIKU = "us.anthropic.claude-3-5-haiku-20241022-v1:0"
+CLAUDE_2_1 = "anthropic.claude-v2:1"
+
+default_model_id = CLAUDE_3_SONNET
+
 def convertMessagesToTextCompletion(messages):
     def convertRole(role):
         if role == "user":
@@ -28,7 +34,6 @@ def convertMessagesToTextCompletion(messages):
     )
 
 def queryBedrockTextCompletion(prompt, temperature=0, top_p=0):
-    print(prompt)
     bedrock = boto3.client(
         service_name='bedrock-runtime', 
         endpoint_url = "https://bedrock-runtime."+os.environ["AWS_REGION"]+".amazonaws.com",
@@ -72,7 +77,7 @@ def queryBedrockTextCompletion(prompt, temperature=0, top_p=0):
         else:
             raise Exception(e)
 
-def queryBedrockMessages(messages, temperature=0, top_p=0):
+def queryBedrockMessages(messages, temperature=0, top_p=0, modelId=default_model_id, retry=3):
     bedrock = boto3.client(
         service_name='bedrock-runtime', 
         endpoint_url = "https://bedrock-runtime."+os.environ["AWS_REGION"]+".amazonaws.com",
@@ -94,7 +99,6 @@ def queryBedrockMessages(messages, temperature=0, top_p=0):
             "top_k": 250
         })
 
-        modelId = 'anthropic.claude-3-sonnet-20240229-v1:0'
         accept = '*/*'
         contentType = 'application/json'
 
@@ -115,16 +119,18 @@ def queryBedrockMessages(messages, temperature=0, top_p=0):
     except Exception as e:
         if "throttlingException".upper() in str(e).upper():
             time.sleep(random.randint(10,30))
-            return queryBedrockMessages(messages, temperature, top_p)
+            return queryBedrockMessages(messages, temperature, top_p, modelId, retry)
+        elif retry > 0:
+            return queryBedrockMessages(messages, temperature, top_p, modelId, retry-1)
         else:
             raise Exception(e)
         
-def queryBedrockStreaming(messages, temperature=0, top_p=0, modelId="anthropic.claude-3-sonnet-20240229-v1:0"):
+def queryBedrockStreaming(messages, temperature=0, top_p=0, modelId=default_model_id):
     if modelId == "anthropic.claude-v2:1":
         prompt = convertMessagesToTextCompletion(messages)
         return queryBedrockTextCompletion(prompt, temperature, top_p)
-    elif modelId == "anthropic.claude-3-sonnet-20240229-v1:0":
-        return queryBedrockMessages(messages, temperature, top_p)
+    else:
+        return queryBedrockMessages(messages, temperature, top_p, modelId)
 
 
 def disambiguate(entity, combined_matches):
@@ -168,7 +174,7 @@ Think step by step.
 """.format(entity=json.dumps(entity), potential_entity_matches=potential_entity_matches)},
             {"role":"assistant", "content":""""""}
     ]
-
+    
     completion = queryBedrockStreaming(messages, temperature=0, top_p=0)
     results = getTextWithinTags(completion, "results").strip()
     
