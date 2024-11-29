@@ -16,7 +16,7 @@ dynamodb = boto3.resource('dynamodb')
 dynamodb_table_name = os.environ["DDBTBL_INGESTION"]
 table = dynamodb.Table(dynamodb_table_name)
 
-def qb_extractChunkData(text, summary, id):
+def qb_extractChunkData(text, summary, main_entity_name, id):
     responses = []
     prompt_history = ""
     completion = ""
@@ -55,21 +55,25 @@ Here is the document:
 </document>
 
 Using the text enclosed within <document></document> tag, perform the following steps:
-1) Identify named commercial products or services provided by the <main_entity>. Leave array empty if you cannot identify any.  For any values that you cannot determine, return empty string.
+1) Identify named commercial products or services provided by {main_entity_name}. Leave array empty if you cannot identify any. For any values that you cannot determine, return empty string.
 
-2) Identify customers of the <main_entity>. Leave array empty if you cannot identify any.  For any values that you cannot determine, return empty string.
+2) Identify customers of {main_entity_name}. Leave array empty if you cannot identify any. For any values that you cannot determine, return empty string.
 
-3) Identify suppliers or partners of the <main_entity>. Leave array empty if you cannot identify any.  For any values that you cannot determine, return empty string.
+3) Identify suppliers or partners of {main_entity_name}. Leave array empty if you cannot identify any. For any values that you cannot determine, return empty string.
 
-4) Identify competitors of the <main_entity>. Leave array empty if you cannot identify any.  For any values that you cannot determine, return empty string.
+4) Identify competitors of {main_entity_name}. Leave array empty if you cannot identify any. For any values that you cannot determine, return empty string.
 
-5) Identify directors of the <main_entity> and their current / prior roles with other companies within <document></document>.  Leave array empty if you cannot identify any.  For any values that you cannot determine, return empty string.
+5) Identify directors of {main_entity_name} and their current / prior roles with other companies within <document></document>. Leave array empty if you cannot identify any. For any values that you cannot determine, return empty string.
 
 6) Be as complete as you can in your idenfication of all information, and include any mentioned information even if they were mentioned to be in the past.
 
-7) It is important that you print out the output within <results></results> xml tag using the following JSON format and ensure that the output is a valid JSON format.
+7) If attributes such as industry or focus area are not available, derive it using the context from the surrounding text.
+
+8) Print out your thought process explaining the relationship of each entity within <thoughts></thoughts> xml tag.
+
+9) It is important that you print out the output within <results></results> xml tag using the following JSON format and ensure that the output is a valid JSON format.
 {sampleJSON}
-         """.format(main_entity=summary,text=text,sampleJSON=sampleJSON)},
+         """.format(main_entity=summary,main_entity_name=main_entity_name, text=text,sampleJSON=sampleJSON)},
          {"role":"assistant", "content": """"""}
     ]
 
@@ -87,14 +91,15 @@ Using the text enclosed within <document></document> tag, perform the following 
         return qb_extractChunkData(text, summary, id)
 
 def lambda_handler(event, context):
-    text = event["text"]
-    summary = event["summary"]
-    source = event["source"]
-    item = event["item"]
-    startPage = item["startPage"]["N"]
-    endPage = item["endPage"]["N"]
+    id = event["id"]
+    item = table.get_item(Key={'id': id})
+    summary = item["Item"]["summary"]
+    source = item["Item"]["source"]
+    startPage = str(item["Item"]["startPage"])
+    endPage = str(item["Item"]["endPage"])
+    text = item["Item"]["text"]
     
-    results = qb_extractChunkData(text, json.dumps(summary), summary["MAIN_ENTITY"]["NAME"]+"->qb_extractChunkData->"+"(pg"+startPage+"-"+endPage+")->" )
+    results = qb_extractChunkData(text, json.dumps(summary), summary["MAIN_ENTITY"]["NAME"], summary["MAIN_ENTITY"]["NAME"]+"->qb_extractChunkData->"+"(pg"+startPage+"-"+endPage+")->" )
 
     results = json.loads(results)
 

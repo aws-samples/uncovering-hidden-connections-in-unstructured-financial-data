@@ -249,7 +249,7 @@ def lambda_handler(event, context):
         finalCustomers = {}
         for key in filteredCustomersArray:
             try:
-                finalCustomers[key] = raw_customers[key]
+                finalCustomers[key] = { **raw_customers[key], "TYPE": "CUSTOMER" }
             except Exception as e:
                 print(e, key) #intentionally skip so if LLM hallucinates and introduces a key not previously available, it will skip.
         id = str(uuid.uuid4())
@@ -273,7 +273,7 @@ def lambda_handler(event, context):
         finalSuppliers = {}
         for key in filteredSuppliersArray:
             try:
-                finalSuppliers[key] = raw_suppliers_or_partners[key]
+                finalSuppliers[key] = { **raw_suppliers_or_partners[key], "TYPE": "SUPPLIER" }
             except Exception as e:
                 print(e, key) #intentionally skip so if LLM hallucinates and introduces a key not previously available, it will skip.
         id = str(uuid.uuid4())
@@ -297,7 +297,7 @@ def lambda_handler(event, context):
         finalCompetitors = {}
         for key in filteredCompetitorsArray:
             try:
-                finalCompetitors[key] = raw_competitors[key]
+                finalCompetitors[key] = { **raw_competitors[key], "TYPE": "COMPETITOR" }
             except Exception as e:
                 print(e, key) #intentionally skip so if LLM hallucinates and introduces a key not previously available, it will skip.
         id = str(uuid.uuid4())
@@ -322,7 +322,7 @@ def lambda_handler(event, context):
         finalDirectors = {}
         for key in filteredDirectorsArray:
             try:
-                finalDirectors[key] = raw_directors[key]
+                finalDirectors[key] = { **raw_directors[key], "TYPE": "DIRECTOR" }
             except Exception as e:
                 print(e, key) #intentionally skip so if LLM hallucinates and introduces a key not previously available, it will skip.
         id = str(uuid.uuid4())

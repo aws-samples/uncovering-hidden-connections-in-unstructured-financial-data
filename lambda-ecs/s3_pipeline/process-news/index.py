@@ -44,7 +44,7 @@ Here is a news article:
 </article>
 
 Extract out any companies or people mentioned in the article, their sentiment, and their relationships with any entities mentioned in the article.
-Return empty string if any value is not available.
+For any attributes that you cannot determine, attempt to derive it using context from surrounding text.  Otherwise return empty string.
 Print them out in a JSON array in the following format within <entities></entities> tag:
 {format}
          """.format(article=article, format=format)},

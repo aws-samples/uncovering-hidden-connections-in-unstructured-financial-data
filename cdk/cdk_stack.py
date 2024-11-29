@@ -830,13 +830,36 @@ class CdkStack(Stack):
         )
         fn_step_function_filter_records.apply_removal_policy(RemovalPolicy.DESTROY)
 
+        # Create Lambda Functions - Step Function - Group Entities
+        function_name = f"{project_name}-step_function-group_entities"
+        fn_step_function_group_entities  = _lambda.Function(self, function_name,
+            function_name=function_name,
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            handler="index.lambda_handler",
+            code=_lambda.Code.from_asset("./lambda-ecs/step-function/05.group-entities"),
+            layers=[layer_lambda],
+            timeout=Duration.minutes(15),
+            role=role_lambda,
+            environment={
+                'DDBTBL_PROMPTS': ddbtbl_prompts.table_name,
+                'DDBTBL_INGESTION': ddbtbl_ingestion.table_name,
+                'NEPTUNE_ENDPOINT': neptune_cluster.cluster_endpoint.socket_address,
+            },
+            tracing=_lambda.Tracing.ACTIVE,
+            vpc=neptune_cluster.vpc,
+            vpc_subnets=neptune_cluster.vpc_subnets,
+            security_groups=[sg_lambda],
+            memory_size=1024
+        )
+        fn_step_function_group_entities.apply_removal_policy(RemovalPolicy.DESTROY)
+        
         # Create Lambda Functions - Step Function - Clean up
         function_name = f"{project_name}-step_function-clean_up"
         fn_step_function_clean_up  = _lambda.Function(self, function_name,
             function_name=function_name,
             runtime=_lambda.Runtime.PYTHON_3_12,
             handler="index.lambda_handler",
-            code=_lambda.Code.from_asset("./lambda-ecs/step-function/06.clean-up"),
+            code=_lambda.Code.from_asset("./lambda-ecs/step-function/07.clean-up"),
             layers=[layer_lambda],
             timeout=Duration.minutes(15),
             role=role_lambda,
@@ -855,7 +878,7 @@ class CdkStack(Stack):
             function_name=function_name,
             runtime=_lambda.Runtime.PYTHON_3_12,
             handler="index.lambda_handler",
-            code=_lambda.Code.from_asset("./lambda-ecs/step-function/07.return-message"),
+            code=_lambda.Code.from_asset("./lambda-ecs/step-function/08.return-message"),
             layers=[layer_lambda],
             timeout=Duration.minutes(15),
             role=role_lambda,
@@ -885,8 +908,8 @@ class CdkStack(Stack):
         # Create Fargate Definition
         taskdef_insert_vertices = ecs.FargateTaskDefinition(self, 
             f"{project_name}-insert-vertices-and-edges-taskdef",
-            cpu=2048,  
-            memory_limit_mib=4096
+            cpu=4096,  
+            memory_limit_mib=8192
         )
         taskdef_insert_vertices.apply_removal_policy(RemovalPolicy.DESTROY)
 
@@ -899,7 +922,7 @@ class CdkStack(Stack):
         # Add container to the task definition
         container = taskdef_insert_vertices.add_container("Container",
             image=ecs.ContainerImage.from_asset(
-                "./lambda-ecs/step-function/05.insert-vertices-edges",
+                "./lambda-ecs/step-function/06.insert-vertices-edges",
                 platform=ecr_assets.Platform.LINUX_AMD64
             ),
             logging=ecs.LogDriver.aws_logs(stream_prefix=project_name, log_group=insert_vertices_log_group),
@@ -1251,10 +1274,6 @@ class CdkStack(Stack):
                 state_name="Process Chunks",
                 payload=sfn.TaskInput.from_object({
                     "id.$": "$.id",
-                    "summary.$": "$.summary",
-                    "text.$": "$.output.Item.text",
-                    "item.$": "$.output.Item",
-                    "source.$": "$.source",
                 }),
                 output_path="$.Payload",
                 lambda_function=fn_step_function_process_chunks,
@@ -1319,7 +1338,37 @@ class CdkStack(Stack):
                 max_attempts=3,
                 backoff_rate=2
             )
-            return task       
+            return task  
+        
+        def sfnInvokeLambdaGroupEntities():
+            task = tasks.LambdaInvoke(
+                self, "GroupEntities",
+                state_name="Group Entities",
+                payload=sfn.TaskInput.from_object({
+                    "output.$": "$.output",
+                    "StateInfo.$": "$.StateInfo",
+                    "Summary.$": "$.Summary"
+                }),
+                result_path="$.output",
+                lambda_function=fn_step_function_group_entities,
+            )
+            task.add_retry(
+                errors=["States.ALL"],
+                interval=Duration.seconds(1),
+                max_attempts=3,
+                backoff_rate=2
+            )
+            task.add_catch(handler=errorHandler, result_path="$.output")
+            return task
+        
+        def sfnMapInsertVerticesEdges():
+            task = sfn.Map(self, "MapInsertVerticesEdges",
+                state_name="Map - Insert Vertices & Edges",
+                items_path=sfn.JsonPath.string_at("$.output.Payload"),
+                result_path="$.output",
+            )
+            task.add_catch(handler=errorHandler, result_path="$.output")
+            return task
 
         def sfnInvokeLambdaInsertVerticesEdges():
             task = tasks.EcsRunTask(
@@ -1339,12 +1388,8 @@ class CdkStack(Stack):
                             value=neptune_cluster.cluster_endpoint.socket_address
                         ),
                         tasks.TaskEnvironmentVariable(
-                            name="output",
-                            value=sfn.JsonPath.string_at("States.JsonToString($.output)")
-                        ),
-                        tasks.TaskEnvironmentVariable(
-                            name="Summary",
-                            value=sfn.JsonPath.string_at("States.JsonToString($.Summary)")
+                            name="uuid",
+                            value=sfn.JsonPath.string_at("$")
                         ),
                         tasks.TaskEnvironmentVariable(
                             name="TASK_TOKEN",
@@ -1360,7 +1405,6 @@ class CdkStack(Stack):
                         )
                     ]
                 )],
-                result_path="$.output",
             )
             task.add_retry(
                 errors=["States.ALL"],
@@ -1368,7 +1412,6 @@ class CdkStack(Stack):
                 max_attempts=3,
                 backoff_rate=2
             )
-            task.add_catch(handler=errorHandler, result_path="$.output")
             return task
        
         def sfnInvokeLambdaCleanup():
@@ -1397,8 +1440,7 @@ class CdkStack(Stack):
                 .next(sfnPassFormatInputSummary())
                 .next(sfnMapProcessChunks()
                         .item_processor(
-                            sfnDynamoGetItem()
-                            .next(sfnInvokeLambdaProcessChunks())
+                            sfnInvokeLambdaProcessChunks()
                         )
                 )
                 .next(sfnInvokeLambdaConsolidateChunks())
@@ -1407,7 +1449,12 @@ class CdkStack(Stack):
                             sfnInvokeLambdaFilterRecords()
                         )
                 )
-                .next(sfnInvokeLambdaInsertVerticesEdges())
+                .next(sfnInvokeLambdaGroupEntities())
+                .next(sfnMapInsertVerticesEdges()
+                        .item_processor(
+                            sfnInvokeLambdaInsertVerticesEdges()
+                        )
+                )
                 .next(sfnInvokeLambdaCleanup())
                 .next(sfn.Succeed(self, "SuccessProcessCompleted", state_name="Success Process Completed"))
             )

@@ -185,14 +185,15 @@ def lambda_handler(event, context):
     deleteAttribute(summaryShort, "SUMMARY_OF_BUSINESS_STRATEGY")
     for chunk in chunks:
         uuids.append({
-            "id": chunk["id"],
-            "summary": summaryShort,
-            "source": "{file}".format(file=S3_KEY.split("/")[-1])
+            "id": chunk["id"]
+            
         })
         table.put_item(Item={
             'id': str(chunk['id']),
             'startPage': int(chunk['startPage']),
             'endPage': int(chunk['endPage']),
+            "summary": summaryShort,
+            "source": "{file}".format(file=S3_KEY.split("/")[-1]),
             'text': str(chunk['text']),
             'ttl_timestamp': int(time.time()) + 7200
         })
