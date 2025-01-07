@@ -1600,7 +1600,7 @@ docker run -p 80:80 -p 443:443 --env HOST=\$EC2_HOSTNAME --env PUBLIC_OR_PROXY_E
 EOF""".format(NEPTUNE_ENDPOINT=neptune_cluster.cluster_endpoint.socket_address, region=self.region))
         user_data.add_commands("""chmod +x run_graph_explorer.sh""")
         user_data.add_commands("""./run_graph_explorer.sh > output""")
-       
+        
         # Launch EC2 in the public subnet
         ec2_instance = ec2.Instance(self, f"{project_name}-Graph-Explorer-EC2",
             instance_type=ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE3, ec2.InstanceSize.MEDIUM),
@@ -1628,9 +1628,14 @@ EOF""".format(NEPTUNE_ENDPOINT=neptune_cluster.cluster_endpoint.socket_address, 
             ],
             detailed_monitoring=True,
         )
+        
+        # Create Elastic IP
+        eip_explorer = ec2.CfnEIP(self, f"{project_name}-explorer-eip",
+            instance_id=ec2_instance.instance_id
+        )
+        
         output("Graph Explorer", f"https://{ec2_instance.instance_public_ip}/explorer")
-        
-        
+              
         
         
         #  ██████ ██    ██ ███████ ████████  ██████  ███    ███     ██████  ███████ ███████  ██████  ██    ██ ██████   ██████ ███████ 
