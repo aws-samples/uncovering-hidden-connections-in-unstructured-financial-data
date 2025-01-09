@@ -10,7 +10,7 @@ __pycache__
 cdk.out
 
 layers/python
-ui/node_modules
+ui/node_modulesgit 
 
 .DS_Store
 
