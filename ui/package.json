@@ -7,6 +7,7 @@
     "axios": "^1.6.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-force-graph-2d": "^1.26.1",
     "react-scripts": "^5.0.1",
     "recheck": "^4.4.5"
   },

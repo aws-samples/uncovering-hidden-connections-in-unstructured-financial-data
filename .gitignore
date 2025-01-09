@@ -19,4 +19,4 @@ lambda-ecs/api/entities/connectionsinsights/
 lambda-ecs/api/generate-news/connectionsinsights/
 lambda-ecs/s3_pipeline/process-news/connectionsinsights/
 lambda-ecs/step-function/01.chunk-document/connectionsinsights/
-lambda-ecs/step-function/05.insert-vertices-edges/connectionsinsights/
+lambda-ecs/step-function/06.insert-vertices-edges/connectionsinsights/

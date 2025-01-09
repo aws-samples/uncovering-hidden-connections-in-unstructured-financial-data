@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { checkSync } from 'recheck';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import DirectedGraph from './DirectedGraph';
 import { Col, Row, Input, List, Tag, Space, Card, Divider, notification, Drawer, Switch, Empty, Button, Collapse } from 'antd';
 import { SettingOutlined, ArrowUpOutlined, ArrowDownOutlined, LoadingOutlined, ExclamationCircleOutlined} from '@ant-design/icons';
 import './index.css';
@@ -26,13 +27,13 @@ function App() {
   const [isClickedReprocessNews, setIsClickedReprocessNews] = useState(false);
   const [isLoadingSettingsData, setIsLoadingSettingsData] = useState(false);
   const [showInterestedOnly, setShowInterestedOnly] = useState(false);
-
+  const graphRef = useRef();
 
   useEffect(() => { // set API endpoint & API key from environment
     setApiEndpoint(window.env.API_GATEWAY_ENDPOINT.replace(/^https:\/\//, ''))
     setApiKey(window.env.API_GATEWAY_APIKEY)
   }, []);
-  
+
   useEffect(() => { // refresh settings
     loadSettingsData();
   }, [apiEndpoint, apiKey]);
@@ -146,6 +147,11 @@ function App() {
           children: <>
           <div dangerouslySetInnerHTML={{__html: item.paths[i].paths[x].assessment}}></div><br/><br/>
           <strong>Connection Path:</strong> <i>{item.paths[i].paths[x].path}</i>
+          <p/>
+          <DirectedGraph data={{
+            nodes: item.paths[i].paths[x].nodes,
+            links: item.paths[i].paths[x].edges
+          }} />
           </>
         }); 
       }

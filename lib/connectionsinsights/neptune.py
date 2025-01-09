@@ -264,6 +264,8 @@ def findVertexWithinNHops(g, label, name, properties, edges, N):
 def formatPath(paths):
     pathStrings = []
     for path in paths:
+        nodes = []
+        edges = []
         pathString = ""
         partCount = 0
         lastVertex = ""
@@ -278,6 +280,12 @@ def formatPath(paths):
                         pathString += ' --> '
                 else:
                     lastVertex = str(path[partCount]["NAME"]) 
+                    
+                # Add node for directed graph visualisation
+                nodes.append({
+                    "id": path[partCount][T.id],
+                    "name": path[partCount]["NAME"]
+                })
             else:
                 # Edge
                 pathString += str(path[partCount][T.label]) 
@@ -288,10 +296,19 @@ def formatPath(paths):
                 if path[partCount][Direction.IN][T.id] == path[partCount-1][T.id]:
                     pathString += ' <-- '
                 else:
-                    pathString += ' --> '   
+                    pathString += ' --> ' 
+                
+                edges.append({
+                    "source": path[partCount][Direction.OUT][T.id],
+                    "target": path[partCount][Direction.IN][T.id],
+                    "label": path[partCount][T.label],
+                    "properties": ','.join(edge_properties_array)
+                })
             partCount += 1
         pathStrings.append({
             "path": pathString,
-            "interested_entity": lastVertex
+            "interested_entity": lastVertex,
+            "nodes": nodes,
+            "edges": edges
         })
     return pathStrings
