@@ -27,7 +27,7 @@ Such second or third-order order impact are difficult to identify and even harde
 4. A step function state machine executes through a series of tasks to process the uploaded document by extracting out key information and inserting them into your knowledge graph.
     * Tasks
         1. Using Amazon Textract, extract out text content from the proxy/annual/10k report file (PDF) in Amazon S3 and splits it into multiple smaller text chunks for processing.  Store the text chunks in Amazon DynamoDB.
-        2. Using Anthropic’s Claude v3 Sonnet on Amazon Bedrock, process the first few text chunks to determine the main entity that the report is referring to, together with relevant attributes (e.g. industry).
+        2. Using Anthropic’s Claude v3.7 sonnet on Amazon Bedrock, process the first few text chunks to determine the main entity that the report is referring to, together with relevant attributes (e.g. industry).
         3. Retrieves the text chunks from DynamoDB and for each text chunk, invokes a lambda function to extract out entities (company/person), and its relationship (customer/supplier/partner/competitor/director) to the main entity using Amazon Bedrock.
         4. Consolidate all extracted information
         5. Filters out noise / irrelevant entities (i.e. generic terms such as "consumers") using Amazon Bedrock.
@@ -113,7 +113,7 @@ You may deploy the two stacks into different regions, or into the same region (i
 
 
 ## Pre-requities
-- Amazon Bedrock - You will need access to Anthropic Claude v3 Sonnet.  To setup model access in Amazon Bedrock, [read this](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html).
+- Amazon Bedrock - You will need access to Anthropic Claude v3.7 sonnet.  To setup model access in Amazon Bedrock, [read this](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html).
 - Python - You will require Python 3 and above.
 - Node - You will require v18.0.0 and above.
 - Docker - You will require v24.0.0 and above with Docker Buildx, and have the docker daemon running.
