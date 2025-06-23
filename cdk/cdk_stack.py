@@ -336,8 +336,8 @@ class CdkStack(Stack):
         layer_lambda = _lambda.LayerVersion(self, f"{project_name}-layer",
             removal_policy=RemovalPolicy.DESTROY,
             code=_lambda.Code.from_asset("./layers"),
-            compatible_architectures=[_lambda.Architecture.X86_64],
-            compatible_runtimes=[_lambda.Runtime.PYTHON_3_12]
+            compatible_architectures=[_lambda.Architecture.X86_64 ], # assume building/deploying from ARM based machine
+            compatible_runtimes=[_lambda.Runtime.PYTHON_3_13]
         )
 
         # Create Lambda Permission
@@ -397,6 +397,9 @@ class CdkStack(Stack):
                                 f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/us.anthropic.claude-3-5-haiku-20241022-v1:0",
                                 f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/us.anthropic.claude-3-7-sonnet-20250219-v1:0",                                
                                 f"arn:aws:bedrock:{self.region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0",
+                                f"arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-7-sonnet-20250219-v1:0", 
+                                f"arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-3-7-sonnet-20250219-v1:0", 
+                                f"arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-3-7-sonnet-20250219-v1:0", 
                                 f"arn:aws:bedrock:{self.region}::foundation-model/anthropic.claude-v2:1",
                                 f"arn:aws:bedrock:{self.region}::foundation-model/amazon.titan-embed-text-v1"
                             ]
@@ -578,7 +581,7 @@ class CdkStack(Stack):
         function_name=f"{project_name}-api-trigger-download-news"
         fn_api_trigger_download_news = _lambda.Function(self, function_name,
             function_name=function_name,
-            runtime=_lambda.Runtime.PYTHON_3_12,
+            runtime=_lambda.Runtime.PYTHON_3_13,
             handler="index.lambda_handler",
             code=_lambda.Code.from_asset("./lambda-ecs/api/trigger-download-news"),
             timeout=Duration.minutes(15),
@@ -588,7 +591,8 @@ class CdkStack(Stack):
                 'DDBTBL_PROMPTS': ddbtbl_prompts.table_name
             },
             tracing=_lambda.Tracing.ACTIVE,  
-            memory_size=1024          
+            memory_size=1024,
+            architecture=_lambda.Architecture.X86_64 
         )        
         fn_api_trigger_download_news.apply_removal_policy(RemovalPolicy.DESTROY)
 
@@ -618,7 +622,7 @@ class CdkStack(Stack):
         function_name = f"{project_name}-api-n"
         fn_api_n = _lambda.Function(self, function_name,
             function_name=function_name,
-            runtime=_lambda.Runtime.PYTHON_3_12,
+            runtime=_lambda.Runtime.PYTHON_3_13,
             handler="index.lambda_handler",
             code=_lambda.Code.from_asset("./lambda-ecs/api/n"),
             layers=[layer_lambda],
@@ -629,7 +633,8 @@ class CdkStack(Stack):
                 'DDBTBL_PROMPTS': ddbtbl_prompts.table_name
             },
             tracing=_lambda.Tracing.ACTIVE,
-            memory_size=1024
+            memory_size=1024,
+            architecture=_lambda.Architecture.X86_64 
         )
         fn_api_n.apply_removal_policy(RemovalPolicy.DESTROY)
 
@@ -637,7 +642,7 @@ class CdkStack(Stack):
         function_name = f"{project_name}-api-news"
         fn_api_news = _lambda.Function(self, function_name,
             function_name=function_name,
-            runtime=_lambda.Runtime.PYTHON_3_12,
+            runtime=_lambda.Runtime.PYTHON_3_13,
             handler="index.lambda_handler",
             code=_lambda.Code.from_asset("./lambda-ecs/api/news"),
             layers=[layer_lambda],
@@ -648,7 +653,8 @@ class CdkStack(Stack):
                 'DDBTBL_PROMPTS': ddbtbl_prompts.table_name
             },
             tracing=_lambda.Tracing.ACTIVE,
-            memory_size=1024
+            memory_size=1024,
+            architecture=_lambda.Architecture.X86_64 
         )
         fn_api_news.apply_removal_policy(RemovalPolicy.DESTROY)
         
@@ -656,7 +662,7 @@ class CdkStack(Stack):
         function_name = f"{project_name}-reprocess-news"
         fn_reprocess_news = _lambda.Function(self, function_name,
             function_name=function_name,
-            runtime=_lambda.Runtime.PYTHON_3_12,
+            runtime=_lambda.Runtime.PYTHON_3_13,
             handler="index.lambda_handler",
             code=_lambda.Code.from_asset("./lambda-ecs/api/reprocess-news"),
             layers=[layer_lambda],
@@ -668,7 +674,8 @@ class CdkStack(Stack):
                 'NEWS_QUEUE': news_queue.queue_name
             },
             tracing=_lambda.Tracing.ACTIVE,
-            memory_size=1024
+            memory_size=1024,
+            architecture=_lambda.Architecture.X86_64 
         )
         fn_reprocess_news.apply_removal_policy(RemovalPolicy.DESTROY)
 
@@ -676,7 +683,7 @@ class CdkStack(Stack):
         function_name = f"{project_name}-s3_pipeline-ingestion-trigger"
         fn_s3_pipeline_ingestion_trigger = _lambda.Function(self, function_name,
             function_name=function_name,
-            runtime=_lambda.Runtime.PYTHON_3_12,
+            runtime=_lambda.Runtime.PYTHON_3_13,
             handler="index.lambda_handler",
             code=_lambda.Code.from_asset("./lambda-ecs/s3_pipeline/ingestion-trigger"),
             layers=[layer_lambda],
@@ -687,7 +694,8 @@ class CdkStack(Stack):
                 'DDBTBL_PROMPTS': ddbtbl_prompts.table_name
             },
             tracing=_lambda.Tracing.ACTIVE,
-            memory_size=1024
+            memory_size=1024,
+            architecture=_lambda.Architecture.X86_64 
         )
         fn_s3_pipeline_ingestion_trigger.apply_removal_policy(RemovalPolicy.DESTROY)
 
@@ -695,7 +703,7 @@ class CdkStack(Stack):
         function_name = f"{project_name}-s3_pipeline-read-ingestion-queue"
         fn_s3_pipeline_read_ingestion_queue = _lambda.Function(self, function_name,
             function_name=function_name,
-            runtime=_lambda.Runtime.PYTHON_3_12,
+            runtime=_lambda.Runtime.PYTHON_3_13,
             handler="index.lambda_handler",
             code=_lambda.Code.from_asset("./lambda-ecs/s3_pipeline/read-ingestion-queue"),
             layers=[layer_lambda],
@@ -707,7 +715,8 @@ class CdkStack(Stack):
                 'STATE_MACHINE_ARN': f"arn:aws:states:{self.region}:{self.account}:stateMachine:{project_name}-state-machine"
             },
             tracing=_lambda.Tracing.ACTIVE,
-            memory_size=1024
+            memory_size=1024,
+            architecture=_lambda.Architecture.X86_64 
         )
         fn_s3_pipeline_read_ingestion_queue.apply_removal_policy(RemovalPolicy.DESTROY)
 
@@ -739,7 +748,7 @@ class CdkStack(Stack):
         function_name = f"{project_name}-step_function-receive_messages"
         fn_step_function_receive_messages  = _lambda.Function(self, function_name,
             function_name=function_name,
-            runtime=_lambda.Runtime.PYTHON_3_12,
+            runtime=_lambda.Runtime.PYTHON_3_13,
             handler="index.lambda_handler",
             code=_lambda.Code.from_asset("./lambda-ecs/step-function/00.receive-messages"),
             layers=[layer_lambda],
@@ -750,7 +759,8 @@ class CdkStack(Stack):
                 'DDBTBL_PROMPTS': ddbtbl_prompts.table_name
             },
             tracing=_lambda.Tracing.ACTIVE,
-            memory_size=1024
+            memory_size=1024,
+            architecture=_lambda.Architecture.X86_64 
         )
         fn_step_function_receive_messages.apply_removal_policy(RemovalPolicy.DESTROY)
         
@@ -778,7 +788,7 @@ class CdkStack(Stack):
         function_name = f"{project_name}-step_function-process-chunks"
         fn_step_function_process_chunks = _lambda.Function(self, function_name,
             function_name=function_name,
-            runtime=_lambda.Runtime.PYTHON_3_12,
+            runtime=_lambda.Runtime.PYTHON_3_13,
             handler="index.lambda_handler",
             code=_lambda.Code.from_asset("./lambda-ecs/step-function/02.process-chunks"),
             layers=[layer_lambda],
@@ -789,7 +799,8 @@ class CdkStack(Stack):
                 'DDBTBL_INGESTION': ddbtbl_ingestion.table_name,
             }, 
             tracing=_lambda.Tracing.ACTIVE,
-            memory_size=1024
+            memory_size=1024,
+            architecture=_lambda.Architecture.X86_64 
         )
         fn_step_function_process_chunks.apply_removal_policy(RemovalPolicy.DESTROY)
 
@@ -797,7 +808,7 @@ class CdkStack(Stack):
         function_name = f"{project_name}-step_function-consolidate-chunks"
         fn_step_function_consolidate_chunks = _lambda.Function(self, function_name,
             function_name=function_name,
-            runtime=_lambda.Runtime.PYTHON_3_12,
+            runtime=_lambda.Runtime.PYTHON_3_13,
             handler="index.lambda_handler",
             code=_lambda.Code.from_asset("./lambda-ecs/step-function/03.consolidate-chunks"),
             layers=[layer_lambda],
@@ -808,7 +819,8 @@ class CdkStack(Stack):
                 'DDBTBL_INGESTION': ddbtbl_ingestion.table_name,
             }, 
             tracing=_lambda.Tracing.ACTIVE,
-            memory_size=1024
+            memory_size=1024,
+            architecture=_lambda.Architecture.X86_64 
         )
         fn_step_function_consolidate_chunks.apply_removal_policy(RemovalPolicy.DESTROY)
 
@@ -816,7 +828,7 @@ class CdkStack(Stack):
         function_name = f"{project_name}-step_function-filter_records"
         fn_step_function_filter_records = _lambda.Function(self, function_name,
             function_name=function_name,
-            runtime=_lambda.Runtime.PYTHON_3_12,
+            runtime=_lambda.Runtime.PYTHON_3_13,
             handler="index.lambda_handler",
             code=_lambda.Code.from_asset("./lambda-ecs/step-function/04.filter-records"),
             layers=[layer_lambda],
@@ -827,7 +839,8 @@ class CdkStack(Stack):
                 'DDBTBL_PROMPTS': ddbtbl_prompts.table_name
             },
             tracing=_lambda.Tracing.ACTIVE,
-            memory_size=1024
+            memory_size=1024,
+            architecture=_lambda.Architecture.X86_64 
         )
         fn_step_function_filter_records.apply_removal_policy(RemovalPolicy.DESTROY)
 
@@ -835,7 +848,7 @@ class CdkStack(Stack):
         function_name = f"{project_name}-step_function-group_entities"
         fn_step_function_group_entities  = _lambda.Function(self, function_name,
             function_name=function_name,
-            runtime=_lambda.Runtime.PYTHON_3_12,
+            runtime=_lambda.Runtime.PYTHON_3_13,
             handler="index.lambda_handler",
             code=_lambda.Code.from_asset("./lambda-ecs/step-function/05.group-entities"),
             layers=[layer_lambda],
@@ -850,7 +863,8 @@ class CdkStack(Stack):
             vpc=neptune_cluster.vpc,
             vpc_subnets=neptune_cluster.vpc_subnets,
             security_groups=[sg_lambda],
-            memory_size=1024
+            memory_size=1024,
+            architecture=_lambda.Architecture.X86_64 
         )
         fn_step_function_group_entities.apply_removal_policy(RemovalPolicy.DESTROY)
         
@@ -858,7 +872,7 @@ class CdkStack(Stack):
         function_name = f"{project_name}-step_function-clean_up"
         fn_step_function_clean_up  = _lambda.Function(self, function_name,
             function_name=function_name,
-            runtime=_lambda.Runtime.PYTHON_3_12,
+            runtime=_lambda.Runtime.PYTHON_3_13,
             handler="index.lambda_handler",
             code=_lambda.Code.from_asset("./lambda-ecs/step-function/07.clean-up"),
             layers=[layer_lambda],
@@ -869,7 +883,8 @@ class CdkStack(Stack):
                 'DDBTBL_PROMPTS': ddbtbl_prompts.table_name
             },
             tracing=_lambda.Tracing.ACTIVE,
-            memory_size=1024
+            memory_size=1024,
+            architecture=_lambda.Architecture.X86_64 
         )
         fn_step_function_clean_up.apply_removal_policy(RemovalPolicy.DESTROY)
 
@@ -877,7 +892,7 @@ class CdkStack(Stack):
         function_name = f"{project_name}-step_function-return_message"
         fn_step_function_return_message = _lambda.Function(self, function_name,
             function_name=function_name,
-            runtime=_lambda.Runtime.PYTHON_3_12,
+            runtime=_lambda.Runtime.PYTHON_3_13,
             handler="index.lambda_handler",
             code=_lambda.Code.from_asset("./lambda-ecs/step-function/08.return-message"),
             layers=[layer_lambda],
@@ -888,7 +903,8 @@ class CdkStack(Stack):
                 'DDBTBL_PROMPTS': ddbtbl_prompts.table_name
             },
             tracing=_lambda.Tracing.ACTIVE,
-            memory_size=1024
+            memory_size=1024,
+            architecture=_lambda.Architecture.X86_64 
         )
         fn_step_function_return_message.apply_removal_policy(RemovalPolicy.DESTROY)
         
@@ -987,6 +1003,9 @@ class CdkStack(Stack):
                     f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/us.anthropic.claude-3-5-haiku-20241022-v1:0",
                     f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/us.anthropic.claude-3-7-sonnet-20250219-v1:0",
                     f"arn:aws:bedrock:{self.region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0",
+                    f"arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-7-sonnet-20250219-v1:0", 
+                    f"arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-3-7-sonnet-20250219-v1:0", 
+                    f"arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-3-7-sonnet-20250219-v1:0", 
                     f"arn:aws:bedrock:{self.region}::foundation-model/anthropic.claude-v2:1",
                     f"arn:aws:bedrock:{self.region}::foundation-model/amazon.titan-embed-text-v1"
                 ]
@@ -1650,7 +1669,7 @@ EOF""".format(NEPTUNE_ENDPOINT=neptune_cluster.cluster_endpoint.socket_address, 
         function_name = f"{project_name}-custom-populate-webapp-env"
         fn_custom_populate_webapp_env = _lambda.Function(self, function_name,
             function_name=function_name,
-            runtime=_lambda.Runtime.PYTHON_3_12,
+            runtime=_lambda.Runtime.PYTHON_3_13,
             handler="index.lambda_handler",
             code=_lambda.Code.from_asset("./lambda-ecs/custom/populate-webapp-env"),
             layers=[layer_lambda],
@@ -1662,7 +1681,8 @@ EOF""".format(NEPTUNE_ENDPOINT=neptune_cluster.cluster_endpoint.socket_address, 
                 'WEBAPP_S3BUCKET': s3_demo_web_app_bucket.bucket_name
             },
             tracing=_lambda.Tracing.ACTIVE,
-            memory_size=1024
+            memory_size=1024,
+            architecture=_lambda.Architecture.X86_64 
         )
         fn_custom_populate_webapp_env.apply_removal_policy(RemovalPolicy.DESTROY)
         

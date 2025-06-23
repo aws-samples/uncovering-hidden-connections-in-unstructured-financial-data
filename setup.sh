@@ -8,7 +8,7 @@ npm run build --prefix ui/
 # To download python dependencies required for creating the AWS Lambda Layer:
 rm -rf layers/python/
 mkdir layers/python/
-pip install -r layers/requirements.txt -t layers/python/.
+pip install --platform manylinux2014_x86_64 --only-binary=:all: -r layers/requirements.txt -t layers/python/.
 
 # To copy custom library "connectionsinsights" to lambda layer / lambda image / ecs image 
 cp -r lib/connectionsinsights layers/python/.
