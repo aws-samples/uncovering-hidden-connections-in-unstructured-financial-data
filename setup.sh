@@ -1,14 +1,16 @@
-# To install python dependencies for CDK
-pip install -r requirements.txt
+# Install/sync all dependencies (creates venv automatically if needed)
+echo "Syncing dependencies..."
+uv sync
 
-# To build the React-based web application:
+# To build the React-based web application (now using Vite):
 npm install --prefix ui/
 npm run build --prefix ui/
 
 # To download python dependencies required for creating the AWS Lambda Layer:
 rm -rf layers/python/
 mkdir layers/python/
-pip install --platform manylinux2014_x86_64 --only-binary=:all: -r layers/requirements.txt -t layers/python/.
+# Use uv pip for lambda layer creation to maintain consistency
+uv pip install --python-platform x86_64-unknown-linux-gnu --only-binary=:all: -r layers/requirements.txt --target layers/python/.
 
 # To copy custom library "connectionsinsights" to lambda layer / lambda image / ecs image 
 cp -r lib/connectionsinsights layers/python/.

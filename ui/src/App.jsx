@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { checkSync } from 'recheck';
 import React, { useState, useEffect, useRef } from 'react';
-import DirectedGraph from './DirectedGraph';
+import DirectedGraph from './DirectedGraph.jsx';
 import { Col, Row, Input, List, Tag, Space, Card, Divider, notification, Drawer, Switch, Empty, Button, Collapse } from 'antd';
 import { SettingOutlined, ArrowUpOutlined, ArrowDownOutlined, LoadingOutlined, ExclamationCircleOutlined} from '@ant-design/icons';
 import './index.css';

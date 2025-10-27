@@ -1652,7 +1652,13 @@ EOF""".format(NEPTUNE_ENDPOINT=neptune_cluster.cluster_endpoint.socket_address, 
         
         # Create Elastic IP
         eip_explorer = ec2.CfnEIP(self, f"{project_name}-explorer-eip",
-            instance_id=ec2_instance.instance_id
+            domain="vpc"
+        )
+        
+        # Associate EIP with EC2 instance
+        eip_association = ec2.CfnEIPAssociation(self, f"{project_name}-eip-association",
+            instance_id=ec2_instance.instance_id,
+            allocation_id=eip_explorer.attr_allocation_id
         )
         
         output("Graph Explorer", f"https://{ec2_instance.instance_public_ip}/explorer")

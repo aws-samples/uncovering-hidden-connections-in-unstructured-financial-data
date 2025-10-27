@@ -1,1 +1,0 @@
-window.env = {'API_GATEWAY_ENDPOINT': '', 'API_GATEWAY_APIKEY': ''}
