@@ -618,6 +618,28 @@ class CdkStack(Stack):
         )
         fn_api_entities.apply_removal_policy(RemovalPolicy.DESTROY)
 
+        # Create Lambda Functions - API - Relationships
+        function_name = f"{project_name}-api-relationships"
+        fn_api_relationships = _lambda.DockerImageFunction(self, function_name,
+            function_name=function_name,
+            code=_lambda.DockerImageCode.from_image_asset(
+                "./lambda-ecs/api/relationships",
+                platform=ecr_assets.Platform.LINUX_AMD64
+            ),
+            timeout=Duration.minutes(15),
+            role=role_lambda,
+            environment={
+                'NEPTUNE_ENDPOINT': neptune_cluster.cluster_endpoint.socket_address,
+                'DDBTBL_PROMPTS': ddbtbl_prompts.table_name
+            },
+            tracing=_lambda.Tracing.ACTIVE,
+            vpc=neptune_cluster.vpc,
+            vpc_subnets=neptune_cluster.vpc_subnets,
+            security_groups=[sg_lambda],
+            memory_size=1024
+        )
+        fn_api_relationships.apply_removal_policy(RemovalPolicy.DESTROY)
+
         # Create Lambda Functions - API - N
         function_name = f"{project_name}-api-n"
         fn_api_n = _lambda.Function(self, function_name,
@@ -1129,6 +1151,11 @@ class CdkStack(Stack):
         entity_resource.add_method('GET', apigateway.LambdaIntegration(fn_api_entities), api_key_required=True)
         entity_resource.add_method('POST', apigateway.LambdaIntegration(fn_api_entities), api_key_required=True)
         entity_resource.apply_removal_policy(RemovalPolicy.DESTROY)
+
+        # Create /relationships resource with Lambda proxy integration
+        relationships_resource = api.root.add_resource('relationships')
+        relationships_resource.add_method('GET', apigateway.LambdaIntegration(fn_api_relationships), api_key_required=True)
+        relationships_resource.apply_removal_policy(RemovalPolicy.DESTROY)
 
         # Create /n resource with Lambda proxy integration
         n_resource = api.root.add_resource('n')

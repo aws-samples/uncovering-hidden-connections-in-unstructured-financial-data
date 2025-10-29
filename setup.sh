@@ -18,4 +18,5 @@ cp -r lib/connectionsinsights lambda-ecs/step-function/01.chunk-document/.
 cp -r lib/connectionsinsights lambda-ecs/step-function/06.insert-vertices-edges/.
 cp -r lib/connectionsinsights lambda-ecs/api/generate-news/.
 cp -r lib/connectionsinsights lambda-ecs/api/entities/.
+cp -r lib/connectionsinsights lambda-ecs/api/relationships/.
 cp -r lib/connectionsinsights lambda-ecs/s3_pipeline/process-news/.

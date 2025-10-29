@@ -1,10 +1,11 @@
-if [[ $# -eq 1 ]]; then
-    export CDK_DEPLOY_REGION=$1
-    echo "Destroying main application stack in $CDK_DEPLOY_REGION"
-    echo "Destroying web application stack in us-east-1"
-    uv run cdk destroy --all --require-approval never
-    exit $?
+#!/bin/bash
+
+echo "Destroying CDK stack..."
+uv run cdk destroy --all --require-approval never
+
+if [ $? -eq 0 ]; then
+    echo "✅ CDK destruction completed successfully!"
 else
-    echo 1>&2 "Expecting one input parameter; please provide region (e.g. us-east-1) to deploy stack to."
+    echo "❌ CDK destruction failed!"
     exit 1
 fi

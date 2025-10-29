@@ -1,13 +1,87 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: #F8F9FA;
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F1F3F4;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #BDC1C6;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9AA0A6;
+}
+
+/* Smooth transitions */
+* {
+  transition: all 0.15s ease-in-out;
+}
+
+/* Loading animation */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Remove focus outlines but keep orange border */
+.MuiTextField-root *:focus,
+.MuiTextField-root *:focus-visible,
+.MuiOutlinedInput-root:focus-within,
+.MuiOutlinedInput-root.Mui-focused,
+.MuiInputBase-input:focus,
+.MuiInputBase-input:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Orange border when text field is focused */
+.MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
+  border-color: #FF9900 !important;
+  border-width: 2px !important;
+}
+
+.MuiInputLabel-root.Mui-focused {
+  color: #FF9900 !important;
+}
+
+/* Improve text readability */
+.MuiTypography-root {
+  color: #2C3E50;
+}
+
+.MuiTypography-body2 {
+  color: #6C757D;
+}
+
+/* Better card shadows */
+.MuiPaper-root {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24) !important;
 }
