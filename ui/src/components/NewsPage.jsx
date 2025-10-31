@@ -2,8 +2,11 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { checkSync } from 'recheck';
 import DirectedGraph from '../DirectedGraph';
-import { Col, Row, List, Tag, Space, Card, Divider, Empty, Collapse, Spin, Button } from 'antd';
+
+import { Col, Row, List, Tag, Space, Card, Divider, Empty, Collapse, Spin, Button, Switch } from 'antd';
 import { ArrowUpOutlined, ArrowDownOutlined, LoadingOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Box, Typography, Snackbar, Alert } from '@mui/material';
+import { RefreshCw } from 'lucide-react';
 
 const NewsPage = ({ 
   apiEndpoint, 
@@ -16,6 +19,9 @@ const NewsPage = ({
   setSelectedPaths 
 }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showInterestedOnly, setShowInterestedOnly] = useState(false);
+  const [isReprocessing, setIsReprocessing] = useState(false);
+  const [notification, setNotification] = useState({ open: false, message: '', severity: 'info' });
 
   const tagColors = ["magenta", "volcano", "gold", "green", "cyan", "blue", "purple"];
 
@@ -32,42 +38,38 @@ const NewsPage = ({
     try {
       if (apiEndpoint.trim() !== "" && apiKey.trim() !== "") {
         setIsRefreshing(true);
-        console.log(`Fetching news from: https://${apiEndpoint}/news`);
-        console.log('API Key present:', apiKey ? 'Yes' : 'No');
-        console.log('API Key length:', apiKey?.length || 0);
+
         
         const newsData = await axios.get(`https://${apiEndpoint}/news`, {
           ...headers,
           timeout: 30000 // Increased to 30 seconds
         });
         
-        console.log('News data received:', newsData.data?.length || 0, 'items');
+
         
         const sortedNews = newsData.data.sort((a, b) => {
           return new Date(b.date) - new Date(a.date);
         });
         setNews(sortedNews);
       } else {
-        console.warn('API Endpoint or API Key is missing');
-        console.log('API Endpoint:', apiEndpoint);
-        console.log('API Key present:', apiKey ? 'Yes' : 'No');
+
       }
     } catch (error) {
-      console.error('Error fetching news:', error);
+
       
       if (error.code === 'ECONNABORTED') {
-        console.error('Request timed out after 30 seconds');
+
         
         // Retry once if it's the first attempt
         if (retryCount === 0) {
-          console.log('Retrying request...');
+
           setTimeout(() => getData(1), 2000); // Retry after 2 seconds
           return; // Don't set isRefreshing to false yet
         }
       } else if (error.response) {
-        console.error('API Error:', error.response.status, error.response.data);
+
       } else if (error.request) {
-        console.error('Network Error: No response received');
+
       }
     } finally {
       setIsRefreshing(false);
@@ -77,6 +79,42 @@ const NewsPage = ({
   const handleManualRefresh = () => {
     getData();
   };
+
+  const showNotification = (message, severity = 'info') => {
+    setNotification({ open: true, message, severity });
+  };
+
+  const handleReprocessNews = async (newsId) => {
+    try {
+      setIsReprocessing(true);
+      
+      // Clear the selected news content immediately
+      setSelectedNews("");
+      setSelectedPaths([]);
+      
+      await axios.get(`https://${apiEndpoint}/reprocessnews?id=${newsId}`, {
+        ...headers,
+        timeout: 30000
+      });
+      
+      showNotification('News article submitted for reprocessing successfully!', 'success');
+      
+      // Refresh the news list after a delay
+      setTimeout(() => {
+        getData();
+      }, 2000);
+    } catch (error) {
+      console.error('Error reprocessing news:', error);
+      showNotification('Error submitting news for reprocessing', 'error');
+    } finally {
+      setIsReprocessing(false);
+    }
+  };
+
+  // Filter news based on toggle
+  const filteredNews = showInterestedOnly 
+    ? news.filter(item => item.interested === "YES")
+    : news;
 
   const handleNewsClick = (item) => {
     setSelectedNews(item);
@@ -113,18 +151,37 @@ const NewsPage = ({
   }
 
   return (
-    <>
+    <Box>
+      <Typography variant="h4" sx={{ fontWeight: 600, color: 'primary.main', mb: 2 }}>
+        News Analysis
+      </Typography>
       <Row>
         <Col span={8} style={{ padding: '10px', borderRight: '1px solid #ccc' }}>
           <List
             header={
               <div style={{ marginBottom: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontWeight: 'bold', fontSize: 18 }}>
-                  List of News
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <div style={{ fontWeight: 'bold', fontSize: 18 }}>
+                    List of News
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Switch
+                      checked={showInterestedOnly}
+                      onChange={setShowInterestedOnly}
+                      size="small"
+                    />
+                    <span style={{ 
+                      fontSize: '14px', 
+                      color: '#666',
+                      fontWeight: 500
+                    }}>
+                      {showInterestedOnly ? 'Show interested only' : 'Show all news'}
+                    </span>
+                  </div>
                 </div>
                 <Button
                   type="primary"
-                  size="small"
+                  size="large"
                   icon={isRefreshing ? <LoadingOutlined spin /> : <ReloadOutlined />}
                   onClick={handleManualRefresh}
                   disabled={isRefreshing}
@@ -135,10 +192,11 @@ const NewsPage = ({
                     fontWeight: 500,
                     borderRadius: '4px',
                     boxShadow: '0px 3px 1px -2px rgba(0,0,0,0.2), 0px 2px 2px 0px rgba(0,0,0,0.14), 0px 1px 5px 0px rgba(0,0,0,0.12)',
-                    paddingTop: '8px',
-                    paddingBottom: '8px',
-                    paddingLeft: '16px',
-                    paddingRight: '16px'
+                    paddingTop: '12px',
+                    paddingBottom: '12px',
+                    paddingLeft: '20px',
+                    paddingRight: '20px',
+                    height: '40px'
                   }}
                 >
                   {isRefreshing ? 'Refreshing...' : 'Refresh'}
@@ -149,7 +207,7 @@ const NewsPage = ({
             pagination={{
               pageSize: 6
             }}      
-            dataSource={news}
+            dataSource={filteredNews}
             renderItem={(item, index) => (
               <List.Item onClick={() => handleNewsClick(item)} style={{ cursor: 'pointer' }}>
                 <List.Item.Meta
@@ -162,7 +220,38 @@ const NewsPage = ({
         </Col>
         <Col span={16} style={{ padding: '10px' }}>
          { selectedNews === "" ? <div style={{ textAlign: 'center', padding: '20px' }}>Select a news item from the left list to view the details.<br/><br/><Empty/></div> : 
-          <Card title={<><Space>{selectedNews.title}{selectedNews.interested === "YES" ? <Tag color="orange" style= {{ fontWeight: 'bold' }}>INTERESTED</Tag> : ''}</Space></>} style={{ height: '100%' }}>
+          <Card 
+            title={
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Space>
+                  {selectedNews.title}
+                  {selectedNews.interested === "YES" ? <Tag color="orange" style={{ fontWeight: 'bold' }}>INTERESTED</Tag> : ''}
+                </Space>
+                <Button
+                  type="primary"
+                  size="large"
+                  icon={isReprocessing ? <LoadingOutlined spin /> : <RefreshCw size={16} />}
+                  onClick={() => handleReprocessNews(selectedNews.id)}
+                  disabled={isReprocessing}
+                  style={{ 
+                    backgroundColor: '#FF9900', 
+                    borderColor: '#FF9900',
+                    color: 'white',
+                    fontWeight: 500,
+                    borderRadius: '4px',
+                    boxShadow: '0px 3px 1px -2px rgba(0,0,0,0.2), 0px 2px 2px 0px rgba(0,0,0,0.14), 0px 1px 5px 0px rgba(0,0,0,0.12)',
+                    paddingTop: '12px',
+                    paddingBottom: '12px',
+                    paddingLeft: '20px',
+                    paddingRight: '20px',
+                    height: '40px'
+                  }}
+                >
+                  {isReprocessing ? 'Re-processing...' : 'Re-process'}
+                </Button>
+              </div>
+            } 
+            style={{ height: '100%' }}>
             <b>{selectedNews.date} - </b>
             {
               checkSync(`(${selectedNews.paths.map(path => escapeRegExp(path.name)).join('|')})`, 'ig').status === 'safe' ?
@@ -183,7 +272,21 @@ const NewsPage = ({
           }
         </Col>
       </Row>
-    </>
+
+      <Snackbar
+        open={notification.open}
+        autoHideDuration={6000}
+        onClose={() => setNotification({ ...notification, open: false })}
+      >
+        <Alert 
+          onClose={() => setNotification({ ...notification, open: false })} 
+          severity={notification.severity}
+          sx={{ width: '100%' }}
+        >
+          {notification.message}
+        </Alert>
+      </Snackbar>
+    </Box>
   );
 };
 

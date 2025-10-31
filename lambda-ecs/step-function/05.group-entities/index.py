@@ -8,6 +8,9 @@ from connectionsinsights.neptune import (
     getOrCreateID,
     GraphConnect
 )
+from connectionsinsights.utils import (
+    increment_processing_status
+)
 
 dynamodb = boto3.resource('dynamodb')
 dynamodb_table_name = os.environ["DDBTBL_INGESTION"]
@@ -17,6 +20,11 @@ def lambda_handler(event, context):
     summary = event["Summary"]
     main_entity_name = summary["MAIN_ENTITY"]["NAME"]
     attributes = summary["MAIN_ENTITY"]["ATTRIBUTES"]
+    
+    # Get processing_id from step function payload and increment status (2 -> 3)
+    processing_id = event.get("processing_id")
+    if processing_id:
+        increment_processing_status(processing_id)
 
     allEdges = []
     results = {}
@@ -74,6 +82,7 @@ def lambda_handler(event, context):
             "summary": json.dumps(summary),
             "main_entity_all_edges": json.dumps(allEdges),
             "main_entity_id": main_entity_id,
+            "processing_id": processing_id,
             'ttl_timestamp': int(time.time()) + 7200
         })
         uuids.append(id)

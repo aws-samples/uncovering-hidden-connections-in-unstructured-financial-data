@@ -17,6 +17,10 @@ from connectionsinsights.bedrock import (
 )
 
 from connectionsinsights.textract import extract_text
+from connectionsinsights.utils import (
+    create_processing_status,
+    increment_processing_status
+)
 
 s3 = boto3.client('s3')
 dynamodb = boto3.resource('dynamodb')
@@ -166,6 +170,13 @@ def lambda_handler(event, context):
     S3_KEY = event["StateInfo"]["S3File"]["S3_KEY"].strip()
     S3_KEY = urllib.parse.unquote_plus(S3_KEY)
     
+    # Extract filename and create processing status record
+    file_name = S3_KEY.split("/")[-1]
+    processing_id = create_processing_status(file_name, 'financial_document', total_steps=4)
+    
+    # Increment processing status for chunk-document step (0 -> 1)
+    increment_processing_status(processing_id)
+    
     arr_text = extract_document(S3_BUCKET, S3_KEY)
     chunks = splitDocument(arr_text)
     maxSummaryChunkCount = 40 # max number of chunks to use for summary; 1 chunk ~ 1 page
@@ -199,5 +210,6 @@ def lambda_handler(event, context):
         })
     return {
         "uuid": uuids,
-        "summary": summary
+        "summary": summary,
+        "processing_id": processing_id
     }

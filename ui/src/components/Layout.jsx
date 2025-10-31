@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Drawer, AppBar, Toolbar, Typography, IconButton, List, ListItem, ListItemIcon, ListItemText, useTheme, useMediaQuery, Tooltip } from '@mui/material';
-import { Menu as MenuIcon, Home, Newspaper, Settings, Network } from 'lucide-react';
+import { Menu as MenuIcon, Home, Newspaper, Settings, Network, Upload, Users } from 'lucide-react';
 import { ChevronLeft, ChevronRight } from '@mui/icons-material';
 
 const drawerWidthExpanded = 240;
@@ -25,11 +25,33 @@ const Layout = ({ children, currentPage, onPageChange }) => {
     setDesktopExpanded(!desktopExpanded);
   };
 
-  const menuItems = [
-    { id: 'home', label: 'Home', icon: <Home size={20} /> },
-    { id: 'relationships', label: 'Relationships', icon: <Network size={20} /> },
-    { id: 'news', label: 'News', icon: <Newspaper size={20} /> },
-    { id: 'settings', label: 'Settings', icon: <Settings size={20} /> },
+  const menuSections = [
+    {
+      title: 'Overview',
+      items: [
+        { id: 'home', label: 'Home', icon: <Home size={20} /> }
+      ]
+    },
+    {
+      title: 'Preparation',
+      items: [
+        { id: 'upload', label: 'Upload', icon: <Upload size={20} /> },
+        { id: 'entities', label: 'Entities', icon: <Users size={20} /> }
+      ]
+    },
+    {
+      title: 'Discovery',
+      items: [
+        { id: 'relationships', label: 'Relationships', icon: <Network size={20} /> },
+        { id: 'news', label: 'News', icon: <Newspaper size={20} /> }
+      ]
+    },
+    {
+      title: 'Settings',
+      items: [
+        { id: 'settings', label: 'Settings', icon: <Settings size={20} /> }
+      ]
+    }
   ];
 
   const drawerWidth = desktopExpanded ? drawerWidthExpanded : drawerWidthCollapsed;
@@ -63,50 +85,86 @@ const Layout = ({ children, currentPage, onPageChange }) => {
       )}
       
       <List sx={{ flexGrow: 1, pt: 1, px: isCollapsed ? 0.5 : 1 }}>
-        {menuItems.map((item) => (
-          <Tooltip 
-            key={item.id}
-            title={isCollapsed ? item.label : ''}
-            placement="right"
-            arrow
-          >
-            <ListItem
-              onClick={() => onPageChange(item.id)}
-              sx={{
-                cursor: 'pointer',
-                borderRadius: 1,
-                mb: 0.5,
-                py: 1.5,
-                px: isCollapsed ? 1 : 1.5,
-                justifyContent: isCollapsed ? 'center' : 'flex-start',
-                backgroundColor: currentPage === item.id ? 'rgba(255,255,255,0.2)' : 'transparent',
-                color: 'white',
-                '&:hover': {
-                  backgroundColor: currentPage === item.id ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.1)',
-                },
-              }}
-            >
-              <ListItemIcon sx={{ 
-                color: 'white',
-                minWidth: isCollapsed ? 'auto' : 36,
-                justifyContent: 'center'
-              }}>
-                {item.icon}
-              </ListItemIcon>
-              {!isCollapsed && (
-                <ListItemText 
-                  primary={item.label} 
-                  sx={{ 
-                    '& .MuiListItemText-primary': { 
-                      fontWeight: currentPage === item.id ? 600 : 400,
-                      fontSize: '0.9rem',
-                      color: 'white'
-                    } 
-                  }} 
-                />
-              )}
-            </ListItem>
-          </Tooltip>
+        {menuSections.map((section, sectionIndex) => (
+          <Box key={section.title}>
+            {/* Section header for expanded mode */}
+            {!isCollapsed && (
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  color: 'rgba(255,255,255,0.7)', 
+                  fontWeight: 600, 
+                  fontSize: '0.75rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  px: 1.5,
+                  py: 1,
+                  display: 'block',
+                  mt: sectionIndex > 0 ? 2 : 0
+                }}
+              >
+                {section.title}
+              </Typography>
+            )}
+            
+            {/* Divider for collapsed mode */}
+            {isCollapsed && sectionIndex > 0 && (
+              <Box 
+                sx={{ 
+                  height: '1px', 
+                  backgroundColor: 'rgba(255,255,255,0.2)', 
+                  mx: 1, 
+                  my: 1.5 
+                }} 
+              />
+            )}
+            
+            {section.items.map((item) => (
+              <Tooltip 
+                key={item.id}
+                title={isCollapsed ? item.label : ''}
+                placement="right"
+                arrow
+              >
+                <ListItem
+                  onClick={() => onPageChange(item.id)}
+                  sx={{
+                    cursor: 'pointer',
+                    borderRadius: 1,
+                    mb: 0.5,
+                    py: 1.5,
+                    px: isCollapsed ? 1 : 1.5,
+                    justifyContent: isCollapsed ? 'center' : 'flex-start',
+                    backgroundColor: currentPage === item.id ? 'rgba(255,255,255,0.2)' : 'transparent',
+                    color: 'white',
+                    '&:hover': {
+                      backgroundColor: currentPage === item.id ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.1)',
+                    },
+                  }}
+                >
+                  <ListItemIcon sx={{ 
+                    color: 'white',
+                    minWidth: isCollapsed ? 'auto' : 36,
+                    justifyContent: 'center'
+                  }}>
+                    {item.icon}
+                  </ListItemIcon>
+                  {!isCollapsed && (
+                    <ListItemText 
+                      primary={item.label} 
+                      sx={{ 
+                        '& .MuiListItemText-primary': { 
+                          fontWeight: currentPage === item.id ? 600 : 400,
+                          fontSize: '0.9rem',
+                          color: 'white'
+                        } 
+                      }} 
+                    />
+                  )}
+                </ListItem>
+              </Tooltip>
+            ))}
+          </Box>
         ))}
       </List>
     </Box>

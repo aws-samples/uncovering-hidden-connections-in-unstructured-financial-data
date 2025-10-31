@@ -7,6 +7,9 @@ import time
 from connectionsinsights.bedrock import (
     uppercase
 )
+from connectionsinsights.utils import (
+    increment_processing_status
+)
 
 dynamodb = boto3.resource('dynamodb')
 dynamodb_table_name = os.environ["DDBTBL_INGESTION"]
@@ -24,6 +27,11 @@ def lambda_handler(event, context):
     chunks = event["output"]
     summary = event["Summary"]
     main_entity = summary['MAIN_ENTITY']
+    
+    # Get processing_id from previous step and increment status (1 -> 2)
+    processing_id = event.get("processing_id")
+    if processing_id:
+        increment_processing_status(processing_id)
     
     products = set()
     raw_customers = {}
@@ -109,10 +117,10 @@ def lambda_handler(event, context):
             print( chunk )
 
     return [
-        {"bodyType": "raw_customers", "jsonID": raw_customers_id, "summary" : summary},
-        {"bodyType": "raw_suppliers_or_partners", "jsonID": raw_suppliers_or_partners_id, "summary" : summary},
-        {"bodyType": "raw_competitors", "jsonID": raw_competitors_id, "summary" : summary},
-        {"bodyType": "raw_directors", "jsonID": raw_directors_id, "summary" : summary}
+        {"bodyType": "raw_customers", "jsonID": raw_customers_id, "summary" : summary, "processing_id": processing_id},
+        {"bodyType": "raw_suppliers_or_partners", "jsonID": raw_suppliers_or_partners_id, "summary" : summary, "processing_id": processing_id},
+        {"bodyType": "raw_competitors", "jsonID": raw_competitors_id, "summary" : summary, "processing_id": processing_id},
+        {"bodyType": "raw_directors", "jsonID": raw_directors_id, "summary" : summary, "processing_id": processing_id}
     ]
     
 

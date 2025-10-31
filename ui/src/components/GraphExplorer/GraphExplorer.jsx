@@ -41,9 +41,33 @@ import FilterPanel from './FilterPanel';
 const GraphExplorer = ({
     apiEndpoint,
     apiKey,
-    onError
+    onError,
+    graphData: externalGraphData,
+    setGraphData: setExternalGraphData,
+    searchResults: externalSearchResults,
+    setSearchResults: setExternalSearchResults,
+    addedEntityIds: externalAddedEntityIds,
+    setAddedEntityIds: setExternalAddedEntityIds,
+    selectedEntity: externalSelectedEntity,
+    setSelectedEntity: setExternalSelectedEntity,
+    selectedRelationship: externalSelectedRelationship,
+    setSelectedRelationship: setExternalSelectedRelationship,
+    currentFilters: externalCurrentFilters,
+    setCurrentFilters: setExternalCurrentFilters,
+    graphLoaded: externalGraphLoaded,
+    setGraphLoaded: setExternalGraphLoaded,
+    leftDrawerOpen: externalLeftDrawerOpen,
+    setLeftDrawerOpen: setExternalLeftDrawerOpen,
+    rightDrawerOpen: externalRightDrawerOpen,
+    setRightDrawerOpen: setExternalRightDrawerOpen,
+    activeLeftPanel: externalActiveLeftPanel,
+    setActiveLeftPanel: setExternalActiveLeftPanel,
+    activeRightPanel: externalActiveRightPanel,
+    setActiveRightPanel: setExternalActiveRightPanel,
+    currentLayout: externalCurrentLayout,
+    setCurrentLayout: setExternalCurrentLayout
 }) => {
-    // Graph state using normalized data
+    // Graph state using normalized data - now using external state
     const {
         getGraphData,
         getEntity,
@@ -56,28 +80,54 @@ const GraphExplorer = ({
         uniqueEntityTypes,
         uniqueRelationshipTypes,
         batchUpdate
-    } = useNormalizedGraphData({ nodes: [], edges: [] });
-    const [selectedEntity, setSelectedEntity] = useState(null);
-    const [selectedRelationship, setSelectedRelationship] = useState(null);
-    const [searchResults, setSearchResults] = useState([]);
-    const [addedEntityIds, setAddedEntityIds] = useState([]);
-    const [currentFilters, setCurrentFilters] = useState(null);
+    } = useNormalizedGraphData(externalGraphData || { nodes: [], edges: [] });
 
-    // UI state
-    const [leftDrawerOpen, setLeftDrawerOpen] = useState(true);
-    const [rightDrawerOpen, setRightDrawerOpen] = useState(true);
-    const [activeLeftPanel, setActiveLeftPanel] = useState('search'); // 'search', 'connections', 'filter'
-    const [activeRightPanel, setActiveRightPanel] = useState('details'); // 'details', 'properties'
+    // Use external state for persistence (with fallbacks for backward compatibility)
+    const selectedEntity = externalSelectedEntity;
+    const setSelectedEntity = setExternalSelectedEntity || (() => {});
+    const selectedRelationship = externalSelectedRelationship;
+    const setSelectedRelationship = setExternalSelectedRelationship || (() => {});
+    const searchResults = externalSearchResults || [];
+    const setSearchResults = setExternalSearchResults || (() => {});
+    const addedEntityIds = externalAddedEntityIds || [];
+    const setAddedEntityIds = setExternalAddedEntityIds || (() => {});
+    const currentFilters = externalCurrentFilters;
+    const setCurrentFilters = setExternalCurrentFilters || (() => {});
+
+    // UI state - use external state for persistence (with fallbacks)
+    const leftDrawerOpen = externalLeftDrawerOpen !== undefined ? externalLeftDrawerOpen : true;
+    const setLeftDrawerOpen = setExternalLeftDrawerOpen || (() => {});
+    const rightDrawerOpen = externalRightDrawerOpen !== undefined ? externalRightDrawerOpen : true;
+    const setRightDrawerOpen = setExternalRightDrawerOpen || (() => {});
+    const activeLeftPanel = externalActiveLeftPanel || 'search';
+    const setActiveLeftPanel = setExternalActiveLeftPanel || (() => {});
+    const activeRightPanel = externalActiveRightPanel || 'details';
+    const setActiveRightPanel = setExternalActiveRightPanel || (() => {});
+    const currentLayout = externalCurrentLayout || 'd3-force';
+    const setCurrentLayout = setExternalCurrentLayout || (() => {});
+
+    // Local UI state that doesn't need persistence
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [notification, setNotification] = useState({ open: false, message: '', severity: 'info' });
+
+    // Handle window resize to ensure graph adapts to container changes
+    useEffect(() => {
+        const handleResize = () => {
+            if (graphRef.current?.resize) {
+                graphRef.current.resize();
+            }
+        };
+
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     // Graph controls
     const graphRef = useRef();
     const graphDataRef = useRef();
     const [isSearching, setIsSearching] = useState(false);
     const [expandingNodeIds, setExpandingNodeIds] = useState(new Set());
-    const [currentLayout, setCurrentLayout] = useState('d3-force'); // Track current layout
-  const [isLayoutRunning, setIsLayoutRunning] = useState(false); // Track layout operations
+    const [isLayoutRunning, setIsLayoutRunning] = useState(false); // Track layout operations
 
     // Memoized filtered graph data using normalized data
     const filteredGraphData = useMemo(() => {
@@ -123,6 +173,17 @@ const GraphExplorer = ({
     useEffect(() => {
         graphDataRef.current = filteredGraphData;
     }, [filteredGraphData]);
+
+    // Sync normalized graph data with external state
+    useEffect(() => {
+        const currentGraphData = getGraphData();
+        if (setExternalGraphData && (
+            currentGraphData.nodes.length !== (externalGraphData?.nodes?.length || 0) ||
+            currentGraphData.edges.length !== (externalGraphData?.edges?.length || 0)
+        )) {
+            setExternalGraphData(currentGraphData);
+        }
+    }, [getGraphData, setExternalGraphData, externalGraphData]);
 
     // Handle filter changes
     const handleFilterChange = useCallback((filters) => {
@@ -373,9 +434,15 @@ const GraphExplorer = ({
     const clearGraph = useCallback(() => {
         clearGraphData();
         setSelectedEntity(null);
+        setSelectedRelationship(null);
         setAddedEntityIds([]);
+        setSearchResults([]);
+        setCurrentFilters(null);
+        if (setExternalGraphData) {
+            setExternalGraphData({ nodes: [], edges: [] });
+        }
         showNotification('Graph cleared', 'info');
-    }, [clearGraphData, showNotification]);
+    }, [clearGraphData, showNotification, setSelectedEntity, setSelectedRelationship, setAddedEntityIds, setSearchResults, setCurrentFilters, setExternalGraphData]);
 
     const toggleFullscreen = useCallback(() => {
         setIsFullscreen(prev => !prev);
@@ -386,6 +453,19 @@ const GraphExplorer = ({
             setLeftDrawerOpen(true);
             setRightDrawerOpen(true);
         }
+        
+        // Trigger resize and fit after DOM updates
+        setTimeout(() => {
+            if (graphRef.current?.resize) {
+                graphRef.current.resize();
+            }
+            // Also trigger a second resize after a bit more delay to ensure proper sizing
+            setTimeout(() => {
+                if (graphRef.current?.resize) {
+                    graphRef.current.resize();
+                }
+            }, 50);
+        }, 50);
     }, [isFullscreen]);
 
     // Handle node selection
@@ -460,7 +540,7 @@ const GraphExplorer = ({
             <AppBar position="static" elevation={1} sx={{ zIndex: 1201, backgroundColor: 'white', color: 'text.primary' }}>
                 <Toolbar>
                     <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 600, color: 'primary.main' }}>
-                        Knowledge Graph Explorer
+                        Relationships Explorer
                     </Typography>
 
                     {/* Layout Controls */}
@@ -542,21 +622,24 @@ const GraphExplorer = ({
             {/* Main Content */}
             <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
                 {/* Left Drawer */}
-                <Drawer
-                    variant="persistent"
-                    anchor="left"
-                    open={leftDrawerOpen && !isFullscreen}
-                    sx={{
-                        width: drawerWidth,
-                        flexShrink: 0,
-                        '& .MuiDrawer-paper': {
-                            width: drawerWidth,
-                            boxSizing: 'border-box',
-                            position: 'relative',
-                            height: '100%'
-                        },
-                    }}
-                >
+                {!isFullscreen && (
+                    <Drawer
+                        variant="persistent"
+                        anchor="left"
+                        open={leftDrawerOpen}
+                        sx={{
+                            width: leftDrawerOpen ? drawerWidth : 0,
+                            flexShrink: 0,
+                            transition: 'width 0.3s ease-in-out',
+                            '& .MuiDrawer-paper': {
+                                width: drawerWidth,
+                                boxSizing: 'border-box',
+                                position: 'relative',
+                                height: '100%',
+                                transition: 'width 0.3s ease-in-out'
+                            },
+                        }}
+                    >
                     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
                         {/* Panel Tabs */}
                         <Box sx={{ borderBottom: 1, borderColor: 'divider', p: 1 }}>
@@ -647,12 +730,14 @@ const GraphExplorer = ({
                         </Box>
                     </Box>
                 </Drawer>
+                )}
 
                 {/* Graph Canvas */}
                 <Box sx={{
                     flex: 1,
                     height: '100%',
-                    position: 'relative'
+                    position: 'relative',
+                    transition: 'all 0.3s ease-in-out'
                 }}>
                     <ErrorBoundary>
                         <GraphCanvas
@@ -673,21 +758,24 @@ const GraphExplorer = ({
                 </Box>
 
                 {/* Right Drawer */}
-                <Drawer
-                    variant="persistent"
-                    anchor="right"
-                    open={rightDrawerOpen && !isFullscreen}
-                    sx={{
-                        width: drawerWidth,
-                        flexShrink: 0,
-                        '& .MuiDrawer-paper': {
-                            width: drawerWidth,
-                            boxSizing: 'border-box',
-                            position: 'relative',
-                            height: '100%'
-                        },
-                    }}
-                >
+                {!isFullscreen && (
+                    <Drawer
+                        variant="persistent"
+                        anchor="right"
+                        open={rightDrawerOpen}
+                        sx={{
+                            width: rightDrawerOpen ? drawerWidth : 0,
+                            flexShrink: 0,
+                            transition: 'width 0.3s ease-in-out',
+                            '& .MuiDrawer-paper': {
+                                width: drawerWidth,
+                                boxSizing: 'border-box',
+                                position: 'relative',
+                                height: '100%',
+                                transition: 'width 0.3s ease-in-out'
+                            },
+                        }}
+                    >
                     <ErrorBoundary>
                         <EntityDetailsPanel
                             selectedEntity={selectedEntity}
@@ -698,6 +786,7 @@ const GraphExplorer = ({
                         />
                     </ErrorBoundary>
                 </Drawer>
+                )}
             </Box>
 
             {/* Notifications */}

@@ -36,27 +36,33 @@ const HomePage = () => {
   const steps = [
     {
       number: '01',
-      title: 'Upload Documents',
-      description: 'Upload official reports to build your knowledge graph',
+      title: 'Upload Financial Reports',
+      description: 'Upload official proxy/annual/10K reports (PDF) to build your knowledge graph foundation',
       icon: <FileText size={20} />
     },
     {
       number: '02',
-      title: 'Configure Settings',
-      description: 'Set up API endpoints and configure entities of interest',
-      icon: <SettingsIcon size={20} />
+      title: 'AI Entity Extraction',
+      description: 'Amazon Bedrock extracts entities and relationships from documents using Claude v3.7 Sonnet',
+      icon: <Brain size={20} />
     },
     {
       number: '03',
-      title: 'Process News',
-      description: 'Download and analyze latest financial news',
-      icon: <Database size={20} />
+      title: 'Configure Tracking',
+      description: 'Set API endpoints, mark entities of interest, and configure connection depth (N-hops)',
+      icon: <SettingsIcon size={20} />
     },
     {
       number: '04',
-      title: 'Get Insights',
-      description: 'View AI-powered connection analysis and insights',
-      icon: <Brain size={20} />
+      title: 'Process News & Analyze',
+      description: 'Download real news or generate samples, then AI identifies hidden connections to your portfolio',
+      icon: <Network size={20} />
+    },
+    {
+      number: '05',
+      title: 'Explore Insights',
+      description: 'View enriched news with connection paths and explore relationships in the graph explorer',
+      icon: <TrendingUp size={20} />
     }
   ];
 
@@ -66,7 +72,7 @@ const HomePage = () => {
       <Container maxWidth="lg" sx={{ py: 6 }}>
         <Box sx={{ textAlign: 'center', mb: 4 }}>
           <Chip
-            label="Powered by Amazon Bedrock & Neptune"
+            label="Powered by Amazon Bedrock & Amazon Neptune"
             sx={{
               mb: 3,
               backgroundColor: '#FFF3E0',
@@ -148,13 +154,13 @@ const HomePage = () => {
             <Typography variant="h4" sx={{ fontWeight: 600, mb: 2 }}>
               How It Works
             </Typography>
-            <Typography variant="body1" sx={{ color: 'text.secondary', maxWidth: 600, mx: 'auto' }}>
-              Follow this simple process to start uncovering hidden connections in your financial data
+            <Typography variant="body1" sx={{ color: 'text.secondary', maxWidth: 700, mx: 'auto' }}>
+              Our AI-powered solution uses Amazon Bedrock and Neptune to automatically build knowledge graphs from financial documents and identify hidden portfolio connections
             </Typography>
           </Box>
 
           <Card sx={{
-            maxWidth: 800,
+            maxWidth: 900,
             mx: 'auto',
             border: '1px solid #E9ECEF',
             borderRadius: 3,
@@ -167,10 +173,10 @@ const HomePage = () => {
                   '& .MuiStepConnector-line': {
                     borderColor: '#E9ECEF',
                     borderLeftWidth: 2,
-                    minHeight: 30
+                    minHeight: 20
                   },
                   '& .MuiStepLabel-root': {
-                    pb: 2
+                    pb: 1.5
                   }
                 }}
               >
@@ -221,10 +227,11 @@ const HomePage = () => {
                             {step.icon}
                           </Box>
                           <Typography variant="body2" sx={{ color: 'text.secondary', fontStyle: 'italic' }}>
-                            {index === 0 && "Upload PDF reports to Amazon S3 to build your knowledge graph foundation"}
-                            {index === 1 && "Configure API endpoints, keys, and mark entities of interest for tracking"}
-                            {index === 2 && "Download real news or generate sample data for analysis and processing"}
-                            {index === 3 && "View enriched news with AI-powered insights and connection analysis"}
+                            {index === 0 && "Upload official reports via drag-and-drop interface to Amazon S3 for automated processing"}
+                            {index === 1 && "Step Functions orchestrate Textract extraction, entity identification, and Neptune graph updates"}
+                            {index === 2 && "Configure API credentials, select entities to monitor, and set relationship depth for tracking"}
+                            {index === 3 && "Process real-time news feeds or generate sample data to identify portfolio impacts"}
+                            {index === 4 && "Access enriched news with connection paths and interactive graph visualization tools"}
                           </Typography>
                         </Paper>
                       </Box>

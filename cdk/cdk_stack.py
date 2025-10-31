@@ -54,7 +54,9 @@ class CdkStack(Stack):
         vpc = ec2.Vpc(self, f"{project_name}-MyVpc",
             ip_addresses=ec2.IpAddresses.cidr("10.0.0.0/16"),
             max_azs=2,
-            nat_gateways=0
+            nat_gateways=0,
+            enable_dns_hostnames=True,
+            enable_dns_support=True
         )
         vpc.apply_removal_policy(RemovalPolicy.DESTROY)
 
@@ -65,6 +67,9 @@ class CdkStack(Stack):
             vpc=vpc,
         )
         sg_lambda.apply_removal_policy(RemovalPolicy.DESTROY)
+        
+        # Allow lambda to make outbound connections to Neptune
+        sg_lambda.add_egress_rule(ec2.Peer.ipv4(vpc.vpc_cidr_block), connection=ec2.Port.tcp(8182))
 
         # Create Security Group - Neptune
         sg_neptune = ec2.SecurityGroup(
@@ -149,6 +154,15 @@ class CdkStack(Stack):
         )
         logs_interface_vpc_endpoint.apply_removal_policy(RemovalPolicy.DESTROY)
 
+        # Create VPC Interface Endpoints for STS (for IAM authentication)
+        sts_interface_vpc_endpoint = ec2.InterfaceVpcEndpoint(self, f"{project_name}-sts",
+            vpc=vpc,
+            service=ec2.InterfaceVpcEndpointService(f"com.amazonaws.{self.region}.sts", 443),
+            private_dns_enabled=True,
+            security_groups=[sg_vpc_endpoint]
+        )
+        sts_interface_vpc_endpoint.apply_removal_policy(RemovalPolicy.DESTROY)
+
 
 
 
@@ -224,6 +238,17 @@ class CdkStack(Stack):
         )
         output("DynamoDB table for prompts", ddbtbl_prompts.table_name)
 
+        # Create DynamoDB table for processing status
+        table_name = f"{project_name}-processing-status"
+        ddbtbl_processing_status = dynamodb.Table(self, id=table_name,
+            table_name=table_name,
+            partition_key=dynamodb.Attribute(name="id", type=dynamodb.AttributeType.STRING),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            point_in_time_recovery=True,
+            removal_policy=RemovalPolicy.DESTROY
+        )
+        output("DynamoDB table for processing status", ddbtbl_processing_status.table_name)
+
         # Create S3 Bucket for access logging - ingestion
         s3_server_access_log_bucket_ingestion = s3.Bucket(self, f"{project_name}-server-access-log-bucket-ingestion",
             removal_policy=RemovalPolicy.DESTROY,
@@ -249,6 +274,14 @@ class CdkStack(Stack):
             server_access_logs_bucket=s3_server_access_log_bucket_news,
             enforce_ssl=True,
             versioned=True,
+            cors=[
+                s3.CorsRule(
+                    allowed_methods=[s3.HttpMethods.PUT, s3.HttpMethods.POST],
+                    allowed_origins=["*"],
+                    allowed_headers=["*"],
+                    max_age=3000
+                )
+            ]
         )
         output("News Bucket", f"https://{self.region}.console.aws.amazon.com/s3/buckets/{s3_news_bucket.bucket_name}")
 
@@ -259,6 +292,14 @@ class CdkStack(Stack):
             server_access_logs_bucket=s3_server_access_log_bucket_ingestion,
             enforce_ssl=True,
             versioned=True,
+            cors=[
+                s3.CorsRule(
+                    allowed_methods=[s3.HttpMethods.PUT, s3.HttpMethods.POST],
+                    allowed_origins=["*"],
+                    allowed_headers=["*"],
+                    max_age=3000
+                )
+            ]
         )
         output("Ingestion Bucket", f"https://{self.region}.console.aws.amazon.com/s3/buckets/{s3_ingestion_bucket.bucket_name}")
 
@@ -375,12 +416,14 @@ class CdkStack(Stack):
                                 "dynamodb:Scan",
                                 "dynamodb:Query",
                                 "dynamodb:GetItem",
+                                "dynamodb:BatchWriteItem",
                             ],
                             resources=[
                                 ddbtbl_ingestion.table_arn,
                                 ddbtbl_news.table_arn,
                                 ddbtbl_settings.table_arn,
-                                ddbtbl_prompts.table_arn
+                                ddbtbl_prompts.table_arn,
+                                ddbtbl_processing_status.table_arn
                             ]
                         )
                     ]
@@ -701,6 +744,107 @@ class CdkStack(Stack):
         )
         fn_reprocess_news.apply_removal_policy(RemovalPolicy.DESTROY)
 
+        # Create Lambda Functions - API - Purge News
+        function_name = f"{project_name}-api-purge-news"
+        fn_api_purge_news = _lambda.Function(self, function_name,
+            function_name=function_name,
+            runtime=_lambda.Runtime.PYTHON_3_13,
+            handler="index.lambda_handler",
+            code=_lambda.Code.from_asset("./lambda-ecs/api/purge-news"),
+            layers=[layer_lambda],
+            timeout=Duration.minutes(15),
+            role=role_lambda,
+            environment={
+                'DDBTBL_NEWS': ddbtbl_news.table_name
+            },
+            tracing=_lambda.Tracing.ACTIVE,
+            memory_size=1024,
+            architecture=_lambda.Architecture.X86_64 
+        )
+        fn_api_purge_news.apply_removal_policy(RemovalPolicy.DESTROY)
+
+        # Create Lambda Functions - API - Purge Entities
+        function_name = f"{project_name}-api-purge-entities"
+        fn_api_purge_entities = _lambda.Function(self, function_name,
+            function_name=function_name,
+            runtime=_lambda.Runtime.PYTHON_3_13,
+            handler="index.lambda_handler",
+            code=_lambda.Code.from_asset("./lambda-ecs/api/purge-entities"),
+            layers=[layer_lambda],
+            timeout=Duration.minutes(15),
+            role=role_lambda,
+            environment={
+                'NEPTUNE_ENDPOINT': neptune_cluster.cluster_endpoint.socket_address
+            },
+            tracing=_lambda.Tracing.ACTIVE,
+            vpc=neptune_cluster.vpc,
+            vpc_subnets=neptune_cluster.vpc_subnets,
+            security_groups=[sg_lambda],
+            memory_size=1024,
+            architecture=_lambda.Architecture.X86_64 
+        )
+        fn_api_purge_entities.apply_removal_policy(RemovalPolicy.DESTROY)
+
+        # Create Lambda Functions - API - Presigned URL PDF
+        function_name = f"{project_name}-api-presigned-url-pdf"
+        fn_api_presigned_url_pdf = _lambda.Function(self, function_name,
+            function_name=function_name,
+            runtime=_lambda.Runtime.PYTHON_3_13,
+            handler="index.lambda_handler",
+            code=_lambda.Code.from_asset("./lambda-ecs/api/presigned-url-pdf"),
+            layers=[layer_lambda],
+            timeout=Duration.minutes(15),
+            role=role_lambda,
+            environment={
+                'S3_INGESTION_BUCKET': s3_ingestion_bucket.bucket_name,
+                'DDBTBL_PROMPTS': ddbtbl_prompts.table_name
+            },
+            tracing=_lambda.Tracing.ACTIVE,
+            memory_size=1024,
+            architecture=_lambda.Architecture.X86_64 
+        )
+        fn_api_presigned_url_pdf.apply_removal_policy(RemovalPolicy.DESTROY)
+
+        # Create Lambda Functions - API - Presigned URL News
+        function_name = f"{project_name}-api-presigned-url-news"
+        fn_api_presigned_url_news = _lambda.Function(self, function_name,
+            function_name=function_name,
+            runtime=_lambda.Runtime.PYTHON_3_13,
+            handler="index.lambda_handler",
+            code=_lambda.Code.from_asset("./lambda-ecs/api/presigned-url-news"),
+            layers=[layer_lambda],
+            timeout=Duration.minutes(15),
+            role=role_lambda,
+            environment={
+                'S3_NEWS_BUCKET': s3_news_bucket.bucket_name,
+                'DDBTBL_PROMPTS': ddbtbl_prompts.table_name
+            },
+            tracing=_lambda.Tracing.ACTIVE,
+            memory_size=1024,
+            architecture=_lambda.Architecture.X86_64 
+        )
+        fn_api_presigned_url_news.apply_removal_policy(RemovalPolicy.DESTROY)
+
+        # Create Lambda Functions - API - Processing Status
+        function_name = f"{project_name}-api-processing-status"
+        fn_api_processing_status = _lambda.Function(self, function_name,
+            function_name=function_name,
+            runtime=_lambda.Runtime.PYTHON_3_13,
+            handler="index.lambda_handler",
+            code=_lambda.Code.from_asset("./lambda-ecs/api/processing-status"),
+            layers=[layer_lambda],
+            timeout=Duration.minutes(15),
+            role=role_lambda,
+            environment={
+                'DDBTBL_PROCESSING_STATUS': ddbtbl_processing_status.table_name,
+                'DDBTBL_PROMPTS': ddbtbl_prompts.table_name
+            },
+            tracing=_lambda.Tracing.ACTIVE,
+            memory_size=1024,
+            architecture=_lambda.Architecture.X86_64 
+        )
+        fn_api_processing_status.apply_removal_policy(RemovalPolicy.DESTROY)
+
         # Create Lambda Functions - S3 Pipeline - Ingestion Trigger
         function_name = f"{project_name}-s3_pipeline-ingestion-trigger"
         fn_s3_pipeline_ingestion_trigger = _lambda.Function(self, function_name,
@@ -756,7 +900,8 @@ class CdkStack(Stack):
                 'DDBTBL_NEWS': ddbtbl_news.table_name,
                 'DDBTBL_SETTINGS': ddbtbl_settings.table_name,
                 'NEPTUNE_ENDPOINT': neptune_cluster.cluster_endpoint.socket_address,
-                'DDBTBL_PROMPTS': ddbtbl_prompts.table_name
+                'DDBTBL_PROMPTS': ddbtbl_prompts.table_name,
+                'DDBTBL_PROCESSING_STATUS': ddbtbl_processing_status.table_name
             },
             tracing=_lambda.Tracing.ACTIVE,
             vpc=neptune_cluster.vpc,
@@ -799,6 +944,7 @@ class CdkStack(Stack):
             environment={
                 'DDBTBL_INGESTION': ddbtbl_ingestion.table_name,
                 'DDBTBL_PROMPTS': ddbtbl_prompts.table_name,
+                'DDBTBL_PROCESSING_STATUS': ddbtbl_processing_status.table_name,
                 'EXTRACTOR': 'TEXTRACT'
             },
             tracing=_lambda.Tracing.ACTIVE, 
@@ -839,6 +985,7 @@ class CdkStack(Stack):
             environment={
                 'DDBTBL_PROMPTS': ddbtbl_prompts.table_name,
                 'DDBTBL_INGESTION': ddbtbl_ingestion.table_name,
+                'DDBTBL_PROCESSING_STATUS': ddbtbl_processing_status.table_name,
             }, 
             tracing=_lambda.Tracing.ACTIVE,
             memory_size=1024,
@@ -879,6 +1026,7 @@ class CdkStack(Stack):
             environment={
                 'DDBTBL_PROMPTS': ddbtbl_prompts.table_name,
                 'DDBTBL_INGESTION': ddbtbl_ingestion.table_name,
+                'DDBTBL_PROCESSING_STATUS': ddbtbl_processing_status.table_name,
                 'NEPTUNE_ENDPOINT': neptune_cluster.cluster_endpoint.socket_address,
             },
             tracing=_lambda.Tracing.ACTIVE,
@@ -902,7 +1050,8 @@ class CdkStack(Stack):
             role=role_lambda,
             environment={
                 'QUEUE_NAME': reports_queue.queue_name,
-                'DDBTBL_PROMPTS': ddbtbl_prompts.table_name
+                'DDBTBL_PROMPTS': ddbtbl_prompts.table_name,
+                'DDBTBL_PROCESSING_STATUS': ddbtbl_processing_status.table_name
             },
             tracing=_lambda.Tracing.ACTIVE,
             memory_size=1024,
@@ -922,7 +1071,8 @@ class CdkStack(Stack):
             role=role_lambda,
             environment={
                 'QUEUE_NAME': reports_queue.queue_name,
-                'DDBTBL_PROMPTS': ddbtbl_prompts.table_name
+                'DDBTBL_PROMPTS': ddbtbl_prompts.table_name,
+                'DDBTBL_PROCESSING_STATUS': ddbtbl_processing_status.table_name
             },
             tracing=_lambda.Tracing.ACTIVE,
             memory_size=1024,
@@ -1173,6 +1323,16 @@ class CdkStack(Stack):
         reprocessnews_resource.add_method('GET', apigateway.LambdaIntegration(fn_reprocess_news), api_key_required=True)
         reprocessnews_resource.apply_removal_policy(RemovalPolicy.DESTROY)
 
+        # Create /purge-news resource with Lambda proxy integration
+        purge_news_resource = api.root.add_resource('purge-news')
+        purge_news_resource.add_method('DELETE', apigateway.LambdaIntegration(fn_api_purge_news), api_key_required=True)
+        purge_news_resource.apply_removal_policy(RemovalPolicy.DESTROY)
+
+        # Create /purge-entities resource with Lambda proxy integration
+        purge_entities_resource = api.root.add_resource('purge-entities')
+        purge_entities_resource.add_method('DELETE', apigateway.LambdaIntegration(fn_api_purge_entities), api_key_required=True)
+        purge_entities_resource.apply_removal_policy(RemovalPolicy.DESTROY)
+
         # Create /generateNews resource with Lambda integration - async
         generateNews_resource = api.root.add_resource('generateNews')        
         generateNews_resource.add_method(
@@ -1211,6 +1371,24 @@ class CdkStack(Stack):
         downloadNews_resource.add_method('GET', apigateway.LambdaIntegration(fn_api_trigger_download_news), api_key_required=True)
         downloadNews_resource.apply_removal_policy(RemovalPolicy.DESTROY)
 
+
+
+        # Create /presigned-url-pdf resource with Lambda integration
+        presigned_url_pdf_resource = api.root.add_resource('presigned-url-pdf')
+        presigned_url_pdf_resource.add_method('POST', apigateway.LambdaIntegration(fn_api_presigned_url_pdf), api_key_required=True)
+        presigned_url_pdf_resource.apply_removal_policy(RemovalPolicy.DESTROY)
+
+        # Create /presigned-url-news resource with Lambda integration
+        presigned_url_news_resource = api.root.add_resource('presigned-url-news')
+        presigned_url_news_resource.add_method('POST', apigateway.LambdaIntegration(fn_api_presigned_url_news), api_key_required=True)
+        presigned_url_news_resource.apply_removal_policy(RemovalPolicy.DESTROY)
+
+        # Create /processing-status resource with Lambda integration
+        processing_status_resource = api.root.add_resource('processing-status')
+        processing_status_resource.add_method('GET', apigateway.LambdaIntegration(fn_api_processing_status), api_key_required=True)
+        processing_status_resource.add_method('DELETE', apigateway.LambdaIntegration(fn_api_processing_status), api_key_required=True)
+        processing_status_resource.apply_removal_policy(RemovalPolicy.DESTROY)
+
         # Create API key and usage plan
         api_key = api.add_api_key(f"{project_name}-apiKey", api_key_name=f"{project_name}-apiKey")
         api_key.apply_removal_policy(RemovalPolicy.DESTROY)
@@ -1240,7 +1418,9 @@ class CdkStack(Stack):
                 state_name="Return Message",
                 result_path="$.output",
                 payload=sfn.TaskInput.from_object({
-                    "ReceiptHandle.$": "$.StateInfo.ReceiptHandle"
+                    "ReceiptHandle.$": "$.StateInfo.ReceiptHandle",
+                    "processing_id.$": "$.processing_id",
+                    "Error.$": "$.output"
                 }),
                 lambda_function=fn_step_function_return_message,
             )
@@ -1305,6 +1485,7 @@ class CdkStack(Stack):
                 parameters={
                     "StateInfo.$": "$.StateInfo",
                     "Summary.$": "$.output.Payload.summary",
+                    "processing_id.$": "$.output.Payload.processing_id",
                     "output.$": "$.output"
                 }
             )
@@ -1350,7 +1531,8 @@ class CdkStack(Stack):
                 payload=sfn.TaskInput.from_object({
                     "output.$": "$.output",
                     "StateInfo.$": "$.StateInfo",
-                    "Summary.$": "$.Summary"
+                    "Summary.$": "$.Summary",
+                    "processing_id.$": "$.processing_id"
                 }),
                 result_path="$.output",
                 lambda_function=fn_step_function_consolidate_chunks,
@@ -1395,7 +1577,8 @@ class CdkStack(Stack):
                 payload=sfn.TaskInput.from_object({
                     "output.$": "$.output",
                     "StateInfo.$": "$.StateInfo",
-                    "Summary.$": "$.Summary"
+                    "Summary.$": "$.Summary",
+                    "processing_id.$": "$.processing_id"
                 }),
                 result_path="$.output",
                 lambda_function=fn_step_function_group_entities,
@@ -1412,7 +1595,7 @@ class CdkStack(Stack):
         def sfnMapInsertVerticesEdges():
             task = sfn.Map(self, "MapInsertVerticesEdges",
                 state_name="Map - Insert Vertices & Edges",
-                items_path=sfn.JsonPath.string_at("$.output.Payload"),
+                items_path=sfn.JsonPath.string_at("$.output"),
                 result_path="$.output",
             )
             task.add_catch(handler=errorHandler, result_path="$.output")
@@ -1470,7 +1653,8 @@ class CdkStack(Stack):
                 payload=sfn.TaskInput.from_object({
                     "Bucket.$": "$.StateInfo.S3File.S3_BUCKET",
                     "Key.$": "$.StateInfo.S3File.S3_KEY",
-                    "ReceiptHandle.$": "$.StateInfo.ReceiptHandle"
+                    "ReceiptHandle.$": "$.StateInfo.ReceiptHandle",
+                    "processing_id.$": "$.processing_id"
                 }),
                 lambda_function=fn_step_function_clean_up,
             )
@@ -1498,6 +1682,15 @@ class CdkStack(Stack):
                         )
                 )
                 .next(sfnInvokeLambdaGroupEntities())
+                .next(sfn.Pass(self, "PreserveProcessingId",
+                    state_name="Preserve Processing Id",
+                    parameters={
+                        "output.$": "$.output.Payload",
+                        "StateInfo.$": "$.StateInfo",
+                        "Summary.$": "$.Summary",
+                        "processing_id.$": "$.processing_id"
+                    }
+                ))
                 .next(sfnMapInsertVerticesEdges()
                         .item_processor(
                             sfnInvokeLambdaInsertVerticesEdges()
@@ -1585,110 +1778,110 @@ class CdkStack(Stack):
         # ██    ██ ██   ██ ██   ██ ██      ██   ██     ██       ██ ██  ██      ██      ██    ██ ██   ██ ██      ██   ██ 
         #  ██████  ██   ██ ██   ██ ██      ██   ██     ███████ ██   ██ ██      ███████  ██████  ██   ██ ███████ ██   ██ 
 
-        # Create Security Group - Graph Explorer
-        sg_explorer = ec2.SecurityGroup(
-            self, f"{project_name}-explorer-security-group",
-            security_group_name=f"{project_name}-explorer-security-group",
-            vpc=vpc,
-        )
-        sg_explorer.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(443), "Allow HTTPS")
-        sg_explorer.apply_removal_policy(RemovalPolicy.DESTROY)
+#         # Create Security Group - Graph Explorer
+#         sg_explorer = ec2.SecurityGroup(
+#             self, f"{project_name}-explorer-security-group",
+#             security_group_name=f"{project_name}-explorer-security-group",
+#             vpc=vpc,
+#         )
+#         sg_explorer.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(443), "Allow HTTPS")
+#         sg_explorer.apply_removal_policy(RemovalPolicy.DESTROY)
 
-        # Create IAM Role for EC2 & Grant access to Neptune DB via IAM Auth
-        explorer_role = iam.Role(self, f"{project_name}-explorer-role",
-            assumed_by=iam.ServicePrincipal("ec2.amazonaws.com")
-        )
-        explorer_role.add_to_policy(iam.PolicyStatement(
-            actions=[
-                "neptune-db:ReadDataViaQuery", 
-                "neptune-db:WriteDataViaQuery",
-                "neptune-db:DeleteDataViaQuery",
-                "neptune-db:connect",
-                "neptune-db:GetQueryStatus",
-                "neptune-db:CancelQuery",
-            ],
-            resources=[
-                f"arn:aws:neptune-db:{self.region}:{self.account}:{neptune_cluster.cluster_resource_identifier}/*"
-            ]
-        ))
+#         # Create IAM Role for EC2 & Grant access to Neptune DB via IAM Auth
+#         explorer_role = iam.Role(self, f"{project_name}-explorer-role",
+#             assumed_by=iam.ServicePrincipal("ec2.amazonaws.com")
+#         )
+#         explorer_role.add_to_policy(iam.PolicyStatement(
+#             actions=[
+#                 "neptune-db:ReadDataViaQuery", 
+#                 "neptune-db:WriteDataViaQuery",
+#                 "neptune-db:DeleteDataViaQuery",
+#                 "neptune-db:connect",
+#                 "neptune-db:GetQueryStatus",
+#                 "neptune-db:CancelQuery",
+#             ],
+#             resources=[
+#                 f"arn:aws:neptune-db:{self.region}:{self.account}:{neptune_cluster.cluster_resource_identifier}/*"
+#             ]
+#         ))
         
-        explorer_role.add_to_policy(iam.PolicyStatement(
-            actions=[
-                "ecr-public:GetAuthorizationToken", 
-                "sts:GetServiceBearerToken",
-            ],
-            resources=[
-                f"*"
-            ]
-        ))
+#         explorer_role.add_to_policy(iam.PolicyStatement(
+#             actions=[
+#                 "ecr-public:GetAuthorizationToken", 
+#                 "sts:GetServiceBearerToken",
+#             ],
+#             resources=[
+#                 f"*"
+#             ]
+#         ))
 
-        # Create User Data script to set up Graph Explorer
-        user_data = ec2.UserData.for_linux()
+#         # Create User Data script to set up Graph Explorer
+#         user_data = ec2.UserData.for_linux()
         
-        # Start up configurations to run scripts after each restart
-        user_data.add_commands("""echo -e "#!/bin/bash\n/home/ec2-user/run_graph_explorer.sh" > /var/lib/cloud/scripts/per-boot/99-setup_graph_explorer.cfg""")
-        user_data.add_commands("""chmod +x /var/lib/cloud/scripts/per-boot/99-setup_graph_explorer.cfg""")
+#         # Start up configurations to run scripts after each restart
+#         user_data.add_commands("""echo -e "#!/bin/bash\n/home/ec2-user/run_graph_explorer.sh" > /var/lib/cloud/scripts/per-boot/99-setup_graph_explorer.cfg""")
+#         user_data.add_commands("""chmod +x /var/lib/cloud/scripts/per-boot/99-setup_graph_explorer.cfg""")
 
-        # Create script to set up & run Graph Explorer
-        user_data.add_commands("""sudo dnf update""")
-        user_data.add_commands("""sudo dnf install -y docker""")
-        user_data.add_commands("""sudo systemctl start docker""")
-        user_data.add_commands("""sudo systemctl enable docker""")
-        user_data.add_commands(f"aws ecr-public get-login-password --region {self.region} | docker login --username AWS --password-stdin public.ecr.aws")
-        user_data.add_commands("""docker pull public.ecr.aws/neptune/graph-explorer""")
-        user_data.add_commands("""cd /home/ec2-user""")
-        user_data.add_commands("""
-cat > run_graph_explorer.sh << EOF 
-#!/bin/bash
-TOKEN=\$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
-EC2_IP=\$(curl -H "X-aws-ec2-metadata-token: \$TOKEN" -v http://169.254.169.254/latest/meta-data/public-ipv4)
-EC2_HOSTNAME="https://"\$EC2_IP
-echo \$EC2_HOSTNAME
-docker run -p 80:80 -p 443:443 --env HOST=\$EC2_HOSTNAME --env PUBLIC_OR_PROXY_ENDPOINT=\$EC2_HOSTNAME --env GRAPH_TYPE=gremlin --env USING_PROXY_SERVER=true --env IAM=true --env AWS_REGION={region} --env GRAPH_CONNECTION_URL=https://{NEPTUNE_ENDPOINT} --env PROXY_SERVER_HTTPS_CONNECTION=true --env GRAPH_EXP_FETCH_REQUEST_TIMEOUT=240000 public.ecr.aws/neptune/graph-explorer
-EOF""".format(NEPTUNE_ENDPOINT=neptune_cluster.cluster_endpoint.socket_address, region=self.region))
-        user_data.add_commands("""chmod +x run_graph_explorer.sh""")
-        user_data.add_commands("""./run_graph_explorer.sh > output""")
+#         # Create script to set up & run Graph Explorer
+#         user_data.add_commands("""sudo dnf update""")
+#         user_data.add_commands("""sudo dnf install -y docker""")
+#         user_data.add_commands("""sudo systemctl start docker""")
+#         user_data.add_commands("""sudo systemctl enable docker""")
+#         user_data.add_commands(f"aws ecr-public get-login-password --region {self.region} | docker login --username AWS --password-stdin public.ecr.aws")
+#         user_data.add_commands("""docker pull public.ecr.aws/neptune/graph-explorer""")
+#         user_data.add_commands("""cd /home/ec2-user""")
+#         user_data.add_commands("""
+# cat > run_graph_explorer.sh << EOF 
+# #!/bin/bash
+# TOKEN=\$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+# EC2_IP=\$(curl -H "X-aws-ec2-metadata-token: \$TOKEN" -v http://169.254.169.254/latest/meta-data/public-ipv4)
+# EC2_HOSTNAME="https://"\$EC2_IP
+# echo \$EC2_HOSTNAME
+# docker run -p 80:80 -p 443:443 --env HOST=\$EC2_HOSTNAME --env PUBLIC_OR_PROXY_ENDPOINT=\$EC2_HOSTNAME --env GRAPH_TYPE=gremlin --env USING_PROXY_SERVER=true --env IAM=true --env AWS_REGION={region} --env GRAPH_CONNECTION_URL=https://{NEPTUNE_ENDPOINT} --env PROXY_SERVER_HTTPS_CONNECTION=true --env GRAPH_EXP_FETCH_REQUEST_TIMEOUT=240000 public.ecr.aws/neptune/graph-explorer
+# EOF""".format(NEPTUNE_ENDPOINT=neptune_cluster.cluster_endpoint.socket_address, region=self.region))
+#         user_data.add_commands("""chmod +x run_graph_explorer.sh""")
+#         user_data.add_commands("""./run_graph_explorer.sh > output""")
         
-        # Launch EC2 in the public subnet
-        ec2_instance = ec2.Instance(self, f"{project_name}-Graph-Explorer-EC2",
-            instance_type=ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE3, ec2.InstanceSize.MEDIUM),
-            machine_image=ec2.MachineImage.latest_amazon_linux2023(),
-            vpc=vpc,
-            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
-            role=explorer_role,
-            security_group=sg_explorer,
-            user_data=user_data,
-            block_devices=[
-                ec2.BlockDevice(
-                    device_name="/dev/sda1",
-                    volume=ec2.BlockDeviceVolume.ebs(
-                        volume_size=20,
-                        encrypted=True
-                    )
-                ),
-                ec2.BlockDevice(
-                    device_name="/dev/xvda",
-                    volume=ec2.BlockDeviceVolume.ebs(
-                        volume_size=20,
-                        encrypted=True
-                    )
-                ),
-            ],
-            detailed_monitoring=True,
-        )
+#         # Launch EC2 in the public subnet
+#         ec2_instance = ec2.Instance(self, f"{project_name}-Graph-Explorer-EC2",
+#             instance_type=ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE3, ec2.InstanceSize.MEDIUM),
+#             machine_image=ec2.MachineImage.latest_amazon_linux2023(),
+#             vpc=vpc,
+#             vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
+#             role=explorer_role,
+#             security_group=sg_explorer,
+#             user_data=user_data,
+#             block_devices=[
+#                 ec2.BlockDevice(
+#                     device_name="/dev/sda1",
+#                     volume=ec2.BlockDeviceVolume.ebs(
+#                         volume_size=20,
+#                         encrypted=True
+#                     )
+#                 ),
+#                 ec2.BlockDevice(
+#                     device_name="/dev/xvda",
+#                     volume=ec2.BlockDeviceVolume.ebs(
+#                         volume_size=20,
+#                         encrypted=True
+#                     )
+#                 ),
+#             ],
+#             detailed_monitoring=True,
+#         )
         
-        # Create Elastic IP
-        eip_explorer = ec2.CfnEIP(self, f"{project_name}-explorer-eip",
-            domain="vpc"
-        )
+#         # Create Elastic IP
+#         eip_explorer = ec2.CfnEIP(self, f"{project_name}-explorer-eip",
+#             domain="vpc"
+#         )
         
-        # Associate EIP with EC2 instance
-        eip_association = ec2.CfnEIPAssociation(self, f"{project_name}-eip-association",
-            instance_id=ec2_instance.instance_id,
-            allocation_id=eip_explorer.attr_allocation_id
-        )
+#         # Associate EIP with EC2 instance
+#         eip_association = ec2.CfnEIPAssociation(self, f"{project_name}-eip-association",
+#             instance_id=ec2_instance.instance_id,
+#             allocation_id=eip_explorer.attr_allocation_id
+#         )
         
-        output("Graph Explorer", f"https://{ec2_instance.instance_public_ip}/explorer")
+#         output("Graph Explorer", f"https://{ec2_instance.instance_public_ip}/explorer")
               
         
         

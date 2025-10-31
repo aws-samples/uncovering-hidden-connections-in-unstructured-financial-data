@@ -2,10 +2,18 @@ import boto3
 import os
 import urllib.parse
 
+from connectionsinsights.utils import (
+    increment_processing_status
+)
+
 sqs = boto3.client('sqs')
 s3 = boto3.client('s3')
 
 def lambda_handler(event, context):
+    # Get processing_id and increment status to final step (3 -> 4)
+    processing_id = event.get("processing_id")
+    if processing_id:
+        increment_processing_status(processing_id, is_final_step=True)
 
     queue_url = sqs.get_queue_url(QueueName=os.environ["QUEUE_NAME"])['QueueUrl']
 

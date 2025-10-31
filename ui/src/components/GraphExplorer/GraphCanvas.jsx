@@ -27,7 +27,7 @@ const GraphCanvas = forwardRef(({
   const cyRef = useRef(null);
   const [showLegend, setShowLegend] = useState(false);
   const [currentLayout, setCurrentLayout] = useState(layout); // Use prop as initial value
-  
+
   // Use refs to store callbacks to prevent re-initialization
   const callbacksRef = useRef({
     onNodeSelection,
@@ -35,7 +35,7 @@ const GraphCanvas = forwardRef(({
     onEdgeSelection,
     onClearSelection
   });
-  
+
   // Update callbacks ref when they change
   useEffect(() => {
     callbacksRef.current = {
@@ -117,8 +117,8 @@ const GraphCanvas = forwardRef(({
   // Node color mapping
   const getNodeColor = useCallback((label) => {
     const colors = {
-      'PERSON': '#FF6B6B',
-      'ORGANIZATION': '#4ECDC4', 
+      'PERSON': '#F8BBD9',           // Pastel pink - for people (soft and distinct from red)
+      'ORGANIZATION': '#4ECDC4',
       'COMPANY': '#45B7D1',
       'LOCATION': '#96CEB4',
       'EVENT': '#FFEAA7',
@@ -128,35 +128,47 @@ const GraphCanvas = forwardRef(({
     return colors[label] || '#95A5A6';
   }, []);
 
+  // Edge color mapping for different relationship types
+  const getEdgeColor = useCallback((relationshipType) => {
+    const colors = {
+      'is a supplier/partner of': '#FFC107',    // Yellow - supplier/partner relationships
+      'is a director of': '#F8BBD9',            // Pastel pink - director relationships (soft and distinct from red)
+      'is a customer of': '#4CAF50',            // Green - customer relationships
+      'is a competitor of': '#D32F2F',          // Bright red - competitor relationships (distinct from pastel pink)
+      'is an employee/director of': '#F8BBD9'   // Pastel pink - employee/director relationships
+    };
+    return colors[relationshipType] || '#95A5A6'; // Default gray for unknown types
+  }, []);
+
   // Run layout function with flicker prevention and memory management
   const runLayout = useCallback((layoutName = currentLayout, useAnimation = true) => {
     if (!cyRef.current || cyRef.current.destroyed()) {
       return;
     }
-    
+
     const cy = cyRef.current;
     const config = { ...layoutConfigs[layoutName] };
-    
+
     if (!config) {
       return;
     }
-    
+
     try {
       // Prevent layout conflicts by stopping any running layouts
       cy.stop();
-      
+
       config.animate = useAnimation ? config.animate || 'end' : false;
-      
+
       // For incremental updates, use gentler animation settings
       if (useAnimation && cy.nodes().length > 0) {
         config.animationDuration = Math.min(config.animationDuration || 500, 300);
       }
-      
+
       const layout = cy.layout(config);
-      
+
       // Store layout reference for cleanup
       const currentLayoutRef = layout;
-      
+
       // Add cleanup for layout animations
       if (useAnimation) {
         layout.one('layoutstop', () => {
@@ -166,7 +178,7 @@ const GraphCanvas = forwardRef(({
           }
         });
       }
-      
+
       layout.run();
     } catch (error) {
       console.error(`Error running ${layoutName} layout:`, error);
@@ -176,7 +188,7 @@ const GraphCanvas = forwardRef(({
   // Zoom to fit function
   const zoomToFit = useCallback(() => {
     if (!cyRef.current) return;
-    
+
     const cy = cyRef.current;
     cy.fit(undefined, 50); // 50px padding
   }, []);
@@ -249,8 +261,8 @@ const GraphCanvas = forwardRef(({
           selector: 'edge',
           style: {
             'width': 2,
-            'line-color': '#BDC3C7',
-            'target-arrow-color': '#7F8C8D',
+            'line-color': (ele) => getEdgeColor(ele.data('label')),
+            'target-arrow-color': (ele) => getEdgeColor(ele.data('label')),
             'target-arrow-shape': 'triangle',
             'curve-style': 'bezier',
             'label': 'data(label)',
@@ -364,7 +376,7 @@ const GraphCanvas = forwardRef(({
       if (resizeObserver) {
         resizeObserver.disconnect();
       }
-      
+
       // Remove all event listeners and destroy cytoscape instance
       if (cyRef.current && !cyRef.current.destroyed()) {
         // Remove all event listeners to prevent memory leaks
@@ -375,16 +387,16 @@ const GraphCanvas = forwardRef(({
     };
 
     return cleanup;
-  }, [getNodeColor]); // Only depend on getNodeColor, use refs for callbacks
+  }, [getNodeColor, getEdgeColor]); // Depend on both color functions, use refs for callbacks
 
   // Update styles when display options change
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    
+
     // Batch style updates to prevent flicker
     cy.startBatch();
-    
+
     try {
       // Update node label visibility
       cy.style()
@@ -476,7 +488,7 @@ const GraphCanvas = forwardRef(({
           const cyNode = cy.getElementById(String(node.id));
           if (cyNode.length > 0) {
             const currentData = cyNode.data();
-            const hasDataChanged = 
+            const hasDataChanged =
               currentData.name !== node.name ||
               currentData.label !== node.label ||
               currentData.isExpanded !== (node.isExpanded || false) ||
@@ -491,7 +503,7 @@ const GraphCanvas = forwardRef(({
                 isExpanded: node.isExpanded || false,
                 properties: node.properties || {}
               });
-              
+
               // Update classes only if expansion state changed
               if (currentData.isExpanded !== (node.isExpanded || false)) {
                 cyNode.removeClass('expanded');
@@ -531,12 +543,12 @@ const GraphCanvas = forwardRef(({
       // Clear any pending animation frames
       if (typeof window !== 'undefined' && window.requestAnimationFrame) {
         // Cancel any pending requestAnimationFrame calls
-        const highestId = setTimeout(() => {}, 0);
+        const highestId = setTimeout(() => { }, 0);
         for (let i = 0; i < highestId; i++) {
           clearTimeout(i);
         }
       }
-      
+
       // Clear any intervals or timeouts that might be running
       prevGraphStructure.current = { nodeIds: [], edgeIds: [] };
     };
@@ -548,14 +560,14 @@ const GraphCanvas = forwardRef(({
 
     const cy = cyRef.current;
     const currentlySelected = cy.elements(':selected');
-    
+
     // Use batch operations for selection changes to prevent flicker
     cy.startBatch();
-    
+
     try {
       if (selectedEntity) {
         const targetNode = cy.getElementById(selectedEntity.id);
-        
+
         // Only update selection if it's actually different
         if (targetNode.length > 0 && !targetNode.selected()) {
           cy.elements().unselect();
@@ -586,13 +598,33 @@ const GraphCanvas = forwardRef(({
       if (cyRef.current) {
         cyRef.current.forceRender();
       }
+    },
+    resize: () => {
+      if (cyRef.current && !cyRef.current.destroyed()) {
+        try {
+          cyRef.current.resize();
+          // Add a small delay before fitting to ensure resize is complete
+          setTimeout(() => {
+            if (cyRef.current && !cyRef.current.destroyed()) {
+              cyRef.current.fit(undefined, 50);
+            }
+          }, 10);
+        } catch (error) {
+          console.error('Error during graph resize:', error);
+        }
+      }
     }
   }), [runLayout, zoomToFit, currentLayout, layoutConfigs]);
 
   // Memoize unique labels for legend
-  const uniqueLabels = useMemo(() => 
-    Array.from(new Set(graphData.nodes?.map(n => n.label) || [])), 
+  const uniqueNodeLabels = useMemo(() =>
+    Array.from(new Set(graphData.nodes?.map(n => n.label) || [])),
     [graphData.nodes]
+  );
+
+  const uniqueEdgeLabels = useMemo(() =>
+    Array.from(new Set(graphData.edges?.map(e => e.label) || [])).filter(label => label && label.trim()),
+    [graphData.edges]
   );
 
   return (
@@ -618,37 +650,81 @@ const GraphCanvas = forwardRef(({
       />
 
       {/* Legend */}
-      {showLegend && uniqueLabels.length > 0 && (
+      {showLegend && (uniqueNodeLabels.length > 0 || uniqueEdgeLabels.length > 0) && (
         <Fade in={showLegend}>
           <Paper sx={{
             position: 'absolute',
             top: 16,
             right: 16,
             p: 2,
-            minWidth: 180,
-            maxWidth: 250,
+            minWidth: 200,
+            maxWidth: 280,
+            maxHeight: '70vh',
+            overflowY: 'auto',
             boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
             borderRadius: 2,
             zIndex: 1000
           }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5 }}>
-              Node Types
-            </Typography>
-            {uniqueLabels.map(label => (
-              <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
-                <Box sx={{
-                  width: 16,
-                  height: 16,
-                  borderRadius: '50%',
-                  backgroundColor: getNodeColor(label),
-                  border: '2px solid #34495E',
-                  flexShrink: 0
-                }} />
-                <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 500 }}>
-                  {label}
+            {/* Node Types */}
+            {uniqueNodeLabels.length > 0 && (
+              <>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5 }}>
+                  Node Types
                 </Typography>
-              </Box>
-            ))}
+                {uniqueNodeLabels.map(label => (
+                  <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                    <Box sx={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: '50%',
+                      backgroundColor: getNodeColor(label),
+                      border: '2px solid #34495E',
+                      flexShrink: 0
+                    }} />
+                    <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 500 }}>
+                      {label}
+                    </Typography>
+                  </Box>
+                ))}
+              </>
+            )}
+
+            {/* Relationship Types */}
+            {uniqueEdgeLabels.length > 0 && (
+              <>
+                {uniqueNodeLabels.length > 0 && <Box sx={{ my: 2, borderBottom: '1px solid #E0E0E0' }} />}
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5 }}>
+                  Relationship Types
+                </Typography>
+                {uniqueEdgeLabels.map(label => (
+                  <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                    <Box sx={{
+                      width: 20,
+                      height: 3,
+                      backgroundColor: getEdgeColor(label),
+                      borderRadius: 1,
+                      flexShrink: 0,
+                      position: 'relative',
+                      '&::after': {
+                        content: '""',
+                        position: 'absolute',
+                        right: -2,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        width: 0,
+                        height: 0,
+                        borderLeft: `4px solid ${getEdgeColor(label)}`,
+                        borderTop: '3px solid transparent',
+                        borderBottom: '3px solid transparent'
+                      }
+                    }} />
+                    <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 500 }}>
+                      {label.replace(/_/g, ' ')}
+                    </Typography>
+                  </Box>
+                ))}
+              </>
+            )}
           </Paper>
         </Fade>
       )}
@@ -674,7 +750,7 @@ const GraphCanvas = forwardRef(({
       )}
 
       {/* Legend Toggle Button */}
-      {uniqueLabels.length > 0 && (
+      {(uniqueNodeLabels.length > 0 || uniqueEdgeLabels.length > 0) && (
         <Box sx={{
           position: 'absolute',
           top: 16,

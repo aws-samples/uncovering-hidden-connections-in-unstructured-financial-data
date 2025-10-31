@@ -3,6 +3,8 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import Layout from './components/Layout';
 import HomePage from './components/HomePage';
+import UploadPage from './components/UploadPage';
+import EntitiesPage from './components/EntitiesPage';
 import NewsPage from './components/NewsPage';
 import RelationshipsPage from './components/RelationshipsPage';
 import SettingsPage from './components/SettingsPage';
@@ -106,7 +108,25 @@ function App() {
   const [selectedNews, setSelectedNews] = useState("");
   const [selectedPaths, setSelectedPaths] = useState([]);
   
-  // Note: Graph data is now managed internally by GraphExplorer component
+  // Global processing status data that persists across page navigation
+  const [processingStatus, setProcessingStatus] = useState([]);
+  const [processingStatusLoaded, setProcessingStatusLoaded] = useState(false);
+  
+  // Global graph/relationships data that persists across page navigation
+  const [graphData, setGraphData] = useState({ nodes: [], edges: [] });
+  const [searchResults, setSearchResults] = useState([]);
+  const [addedEntityIds, setAddedEntityIds] = useState([]);
+  const [selectedEntity, setSelectedEntity] = useState(null);
+  const [selectedRelationship, setSelectedRelationship] = useState(null);
+  const [currentFilters, setCurrentFilters] = useState(null);
+  const [graphLoaded, setGraphLoaded] = useState(false);
+  
+  // Graph UI state that persists across page navigation
+  const [leftDrawerOpen, setLeftDrawerOpen] = useState(true);
+  const [rightDrawerOpen, setRightDrawerOpen] = useState(true);
+  const [activeLeftPanel, setActiveLeftPanel] = useState('search');
+  const [activeRightPanel, setActiveRightPanel] = useState('details');
+  const [currentLayout, setCurrentLayout] = useState('d3-force');
 
   useEffect(() => {
     // Set API endpoint & API key from environment if available
@@ -122,6 +142,36 @@ function App() {
     switch (currentPage) {
       case 'home':
         return <HomePage />;
+      case 'upload':
+        return (
+          <UploadPage
+            apiEndpoint={apiEndpoint}
+            apiKey={apiKey}
+            processingStatus={processingStatus}
+            setProcessingStatus={setProcessingStatus}
+            processingStatusLoaded={processingStatusLoaded}
+            setProcessingStatusLoaded={setProcessingStatusLoaded}
+          />
+        );
+      case 'entities':
+        return (
+          <EntitiesPage
+            apiEndpoint={apiEndpoint}
+            apiKey={apiKey}
+            entityList={entityList}
+            setEntityList={setEntityList}
+            filteredEntityList={filteredEntityList}
+            setFilteredEntityList={setFilteredEntityList}
+            searchInput={searchInput}
+            setSearchInput={setSearchInput}
+            showInterestedOnly={showInterestedOnly}
+            setShowInterestedOnly={setShowInterestedOnly}
+            settingsLoaded={settingsLoaded}
+            setSettingsLoaded={setSettingsLoaded}
+            nHops={nHops}
+            setNHops={setNHops}
+          />
+        );
       case 'news':
         return (
           <NewsPage 
@@ -140,6 +190,30 @@ function App() {
           <RelationshipsPage
             apiEndpoint={apiEndpoint}
             apiKey={apiKey}
+            graphData={graphData}
+            setGraphData={setGraphData}
+            searchResults={searchResults}
+            setSearchResults={setSearchResults}
+            addedEntityIds={addedEntityIds}
+            setAddedEntityIds={setAddedEntityIds}
+            selectedEntity={selectedEntity}
+            setSelectedEntity={setSelectedEntity}
+            selectedRelationship={selectedRelationship}
+            setSelectedRelationship={setSelectedRelationship}
+            currentFilters={currentFilters}
+            setCurrentFilters={setCurrentFilters}
+            graphLoaded={graphLoaded}
+            setGraphLoaded={setGraphLoaded}
+            leftDrawerOpen={leftDrawerOpen}
+            setLeftDrawerOpen={setLeftDrawerOpen}
+            rightDrawerOpen={rightDrawerOpen}
+            setRightDrawerOpen={setRightDrawerOpen}
+            activeLeftPanel={activeLeftPanel}
+            setActiveLeftPanel={setActiveLeftPanel}
+            activeRightPanel={activeRightPanel}
+            setActiveRightPanel={setActiveRightPanel}
+            currentLayout={currentLayout}
+            setCurrentLayout={setCurrentLayout}
           />
         );
       case 'settings':
@@ -151,18 +225,6 @@ function App() {
             setApiKey={setApiKey}
             newsApiKey={newsApiKey}
             setNewsApiKey={setNewsApiKey}
-            settingsLoaded={settingsLoaded}
-            setSettingsLoaded={setSettingsLoaded}
-            nHops={nHops}
-            setNHops={setNHops}
-            entityList={entityList}
-            setEntityList={setEntityList}
-            filteredEntityList={filteredEntityList}
-            setFilteredEntityList={setFilteredEntityList}
-            searchInput={searchInput}
-            setSearchInput={setSearchInput}
-            showInterestedOnly={showInterestedOnly}
-            setShowInterestedOnly={setShowInterestedOnly}
           />
         );
       default:

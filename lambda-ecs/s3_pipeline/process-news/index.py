@@ -12,6 +12,7 @@ from connectionsinsights.bedrock import (
     cleanJSONString,
     uppercase,
 )
+import botocore.exceptions
 
 from connectionsinsights.dynamodb import (
     getN,
@@ -20,6 +21,12 @@ from connectionsinsights.dynamodb import (
 from connectionsinsights.neptune import (
     findVertexWithinNHops,
     GraphConnect  
+)
+
+from connectionsinsights.utils import (
+    create_processing_status,
+    increment_processing_status,
+    mark_processing_failed
 )
 
 s3 = boto3.client('s3')
@@ -51,10 +58,41 @@ Print them out in a JSON array in the following format within <entities></entiti
          {"role":"assistant", "content": ""}
     ]
     
-    completion = queryBedrockStreaming(messages)
-    entities = getTextWithinTags(completion, "entities")
-    
-    return cleanJSONString(entities)
+    # Retry logic for Bedrock calls
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            completion = queryBedrockStreaming(messages)
+            entities = getTextWithinTags(completion, "entities")
+            return cleanJSONString(entities)
+        except botocore.exceptions.ClientError as e:
+            error_code = e.response['Error']['Code']
+            print(f"Bedrock error on attempt {attempt + 1}: {error_code} - {str(e)}")
+            
+            if error_code in ['ServiceUnavailableException', 'ThrottlingException']:
+                if attempt < max_retries - 1:
+                    # Exponential backoff: 2, 4, 8 seconds
+                    wait_time = 2 ** (attempt + 1)
+                    print(f"Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    print("Max retries reached for Bedrock call")
+                    # Return empty result to prevent complete failure
+                    return "[]"
+            else:
+                # For other errors, don't retry
+                print(f"Non-retryable Bedrock error: {error_code}")
+                return "[]"
+        except Exception as e:
+            print(f"Unexpected error in Bedrock call: {str(e)}")
+            if attempt < max_retries - 1:
+                wait_time = 2 ** (attempt + 1)
+                print(f"Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+                continue
+            else:
+                return "[]"
 
 def qb_assessImpact(article, path, interested_entity, news_entity):
     messages = [
@@ -90,14 +128,49 @@ Based on the impact of the news to <news_entity> and the <path> provided, perfor
          {"role":"assistant", "content": ""}
     ]
 
-    completion = queryBedrockStreaming(messages)
-    impact = getTextWithinTags(completion, "impact")
-    result = getTextWithinTags(completion, "result")
+    # Retry logic for Bedrock calls
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            completion = queryBedrockStreaming(messages)
+            impact = getTextWithinTags(completion, "impact")
+            result = getTextWithinTags(completion, "result")
+            return result, impact
+        except botocore.exceptions.ClientError as e:
+            error_code = e.response['Error']['Code']
+            print(f"Bedrock error in impact assessment on attempt {attempt + 1}: {error_code} - {str(e)}")
+            
+            if error_code in ['ServiceUnavailableException', 'ThrottlingException']:
+                if attempt < max_retries - 1:
+                    # Exponential backoff: 2, 4, 8 seconds
+                    wait_time = 2 ** (attempt + 1)
+                    print(f"Retrying impact assessment in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    print("Max retries reached for impact assessment")
+                    # Return neutral impact to prevent complete failure
+                    return "Unable to assess impact due to service issues", "NEUTRAL"
+            else:
+                # For other errors, don't retry
+                print(f"Non-retryable Bedrock error in impact assessment: {error_code}")
+                return "Unable to assess impact due to service error", "NEUTRAL"
+        except Exception as e:
+            print(f"Unexpected error in impact assessment: {str(e)}")
+            if attempt < max_retries - 1:
+                wait_time = 2 ** (attempt + 1)
+                print(f"Retrying impact assessment in {wait_time} seconds...")
+                time.sleep(wait_time)
+                continue
+            else:
+                return "Unable to assess impact due to unexpected error", "NEUTRAL"
 
-    return result, impact
 
-
-def processArticle(article):
+def processArticle(article, processing_id=None):
+    # Increment processing status (step 0 -> 1)
+    if processing_id:
+        increment_processing_status(processing_id)
+    
     g, connection = GraphConnect()
     value_of_n = getN() 
     entities = qb_extractDataFromArticle(article)
@@ -149,6 +222,8 @@ def processArticle(article):
     )
     connection.close()
     
+
+
 def isValidJson(text):
     try:
         json.loads(text)
@@ -157,6 +232,7 @@ def isValidJson(text):
         return False
 
 def lambda_handler(event, context):
+    processing_id = None
     try:
         body = event["Records"][0]["body"]
         if isValidJson(body):
@@ -168,12 +244,32 @@ def lambda_handler(event, context):
             s3_key_decoded = urllib.parse.unquote_plus(s3_key)
             response = s3.get_object(Bucket=s3_bucket, Key=s3_key_decoded)
             file_content = response['Body'].read().decode('utf-8')
+            
+            # Extract filename from S3 key
+            file_name = s3_key_decoded.split('/')[-1]
+            
+            # Create processing status record
+            processing_id = create_processing_status(file_name, 'news')
         
-            processArticle(file_content)
-            s3.delete_object(Bucket=s3_bucket, Key=s3_key_decoded)
+            try:
+                processArticle(file_content, processing_id)
+                
+                # Increment processing status to completed (step 1 -> 2)
+                increment_processing_status(processing_id, is_final_step=True)
+                
+                s3.delete_object(Bucket=s3_bucket, Key=s3_key_decoded)
+            except Exception as process_error:
+                print(f"Error processing article: {str(process_error)}")
+                # Mark as failed in processing status
+                if processing_id:
+                    try:
+                        mark_processing_failed(processing_id, str(process_error))
+                    except Exception as status_error:
+                        print(f"Failed to update error status: {str(status_error)}")
+                raise process_error
+                
         else:
             # re-process existing news article in DynamoDB
-
             response = table.get_item(Key={"id": body})
             
             if 'Item' in response:
@@ -186,8 +282,26 @@ def lambda_handler(event, context):
                            title=response['Item']['title'] if 'title' in response['Item'] else "",  
                            text=response['Item']['text'] if 'text' in response['Item'] else "",
                            url=response['Item']['url'] if "url" in response['Item'] else "")
-                processArticle(file_content)
-                table.delete_item(Key={"id": body})
+                
+                # Create processing status for reprocessing
+                processing_id = create_processing_status(f"Reprocess: {response['Item'].get('title', 'Unknown')}", 'news')
+                
+                try:
+                    processArticle(file_content, processing_id)
+                    
+                    # Increment processing status to completed (step 1 -> 2)
+                    increment_processing_status(processing_id, is_final_step=True)
+                    
+                    table.delete_item(Key={"id": body})
+                except Exception as process_error:
+                    print(f"Error reprocessing article: {str(process_error)}")
+                    # Mark as failed in processing status
+                    if processing_id:
+                        try:
+                            mark_processing_failed(processing_id, str(process_error))
+                        except Exception as status_error:
+                            print(f"Failed to update error status: {str(status_error)}")
+                    raise process_error
             else:
                 print("Item not found:", body)
         
@@ -195,9 +309,18 @@ def lambda_handler(event, context):
             'statusCode': 200,
             'body': json.dumps('Success!')
         }
-    except Exception as e: # clear unintended queue messages such as s3:TestEvent
-        print(e, event)
+    except Exception as e:
+        print(f"Lambda handler error: {str(e)}")
+        print(f"Event: {event}")
+        
+        # Mark processing as failed if we have a processing_id
+        if processing_id:
+            try:
+                mark_processing_failed(processing_id, f"Lambda handler error: {str(e)}")
+            except Exception as status_error:
+                print(f"Failed to update error status in final handler: {str(status_error)}")
+        
         return {
             'statusCode': 200,
-            'body': event
+            'body': json.dumps(f'Error: {str(e)}')
         }

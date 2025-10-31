@@ -4,6 +4,11 @@ import boto3
 
 apikey_id = os.environ["APIKEY_ID"]
 api_endpoint = os.environ["API_ENDPOINT"]
+# Remove protocol part (https:// or http://) from the API endpoint
+if api_endpoint.startswith("https://"):
+    api_endpoint = api_endpoint[8:]  # Remove "https://"
+elif api_endpoint.startswith("http://"):
+    api_endpoint = api_endpoint[7:]   # Remove "http://"
 webapp_s3bucket = os.environ["WEBAPP_S3BUCKET"]
 
 apigw = boto3.client('apigateway')
