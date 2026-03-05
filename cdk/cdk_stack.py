@@ -434,16 +434,10 @@ class CdkStack(Stack):
                             effect=iam.Effect.ALLOW,
                             actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
                             resources=[
-                                f"arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0", 
-                                f"arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0", 
-                                f"arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0", 
-                                f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/us.anthropic.claude-3-5-haiku-20241022-v1:0",
-                                f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/us.anthropic.claude-3-7-sonnet-20250219-v1:0",                                
-                                f"arn:aws:bedrock:{self.region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0",
-                                f"arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-7-sonnet-20250219-v1:0", 
-                                f"arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-3-7-sonnet-20250219-v1:0", 
-                                f"arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-3-7-sonnet-20250219-v1:0", 
-                                f"arn:aws:bedrock:{self.region}::foundation-model/anthropic.claude-v2:1",
+                                f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/us.anthropic.claude-sonnet-4-6",
+                                f"arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-sonnet-4-6",
+                                f"arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-sonnet-4-6",
+                                f"arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-sonnet-4-6",
                                 f"arn:aws:bedrock:{self.region}::foundation-model/amazon.titan-embed-text-v1"
                             ]
                         )
@@ -1169,16 +1163,10 @@ class CdkStack(Stack):
                 effect=iam.Effect.ALLOW,
                 actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
                 resources=[
-                    f"arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0", 
-                    f"arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0", 
-                    f"arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0", 
-                    f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/us.anthropic.claude-3-5-haiku-20241022-v1:0",
-                    f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-                    f"arn:aws:bedrock:{self.region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0",
-                    f"arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-7-sonnet-20250219-v1:0", 
-                    f"arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-3-7-sonnet-20250219-v1:0", 
-                    f"arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-3-7-sonnet-20250219-v1:0", 
-                    f"arn:aws:bedrock:{self.region}::foundation-model/anthropic.claude-v2:1",
+                    f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/us.anthropic.claude-sonnet-4-6",
+                    f"arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-sonnet-4-6",
+                    f"arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-sonnet-4-6",
+                    f"arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-sonnet-4-6",
                     f"arn:aws:bedrock:{self.region}::foundation-model/amazon.titan-embed-text-v1"
                 ]
             )

@@ -14,14 +14,6 @@ ui/node_modulesgit
 
 .DS_Store
 
-# Libraries copied from lib/ which should not be committed
-lambda-ecs/api/entities/connectionsinsights/
-lambda-ecs/api/generate-news/connectionsinsights/
-lambda-ecs/s3_pipeline/process-news/connectionsinsights/
-lambda-ecs/step-function/01.chunk-document/connectionsinsights/
-lambda-ecs/step-function/06.insert-vertices-edges/connectionsinsights/
-lambda-ecs/api/relationships/connectionsinsights/
-
 env.js
 .vscode
 .kiro

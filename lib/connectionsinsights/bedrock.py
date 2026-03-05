@@ -16,13 +16,12 @@ from datetime import datetime
 # ██   ██ ██      ██   ██ ██   ██ ██    ██ ██      ██  ██  
 # ██████  ███████ ██████  ██   ██  ██████   ██████ ██   ██ 
 
-CLAUDE_3_7_SONNET = "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+CLAUDE_SONNET_4_6 = "us.anthropic.claude-sonnet-4-6"
 CLAUDE_3_SONNET = "anthropic.claude-3-sonnet-20240229-v1:0"
-CLAUDE_3_5_HAIKU = "us.anthropic.claude-3-5-haiku-20241022-v1:0"
 CLAUDE_2_1 = "anthropic.claude-v2:1"
 
 
-default_model_id = CLAUDE_3_7_SONNET
+default_model_id = CLAUDE_SONNET_4_6
 
 def convertMessagesToTextCompletion(messages):
     def convertRole(role):
@@ -97,7 +96,7 @@ def queryBedrockMessages(messages, temperature=0, top_p=0, modelId=default_model
             "messages": messages,
             "max_tokens": 4000,
             "temperature": temperature,
-            "top_p": top_p,
+            # "top_p": top_p, # To provide only either temperature or top_p in newer Claude versions
             "top_k": 250
         })
 
