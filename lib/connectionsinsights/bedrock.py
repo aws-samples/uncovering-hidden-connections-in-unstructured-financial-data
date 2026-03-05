@@ -205,8 +205,11 @@ def getTextWithinTags(text,tags):
     return response
 
 def cleanJSONString(text):
+    # Strip markdown code fences
+    cleaned_text = re.sub(r'^```(?:json)?\s*', '', text.strip(), flags=re.IGNORECASE)
+    cleaned_text = re.sub(r'\s*```$', '', cleaned_text.strip())
     # Replace 'NULL' with empty string
-    cleaned_text = re.sub(r'\bNULL\b', '""', text, flags=re.IGNORECASE)
+    cleaned_text = re.sub(r'\bNULL\b', '""', cleaned_text, flags=re.IGNORECASE)
     return cleaned_text
 
 def generateEmbeddings(prompt):

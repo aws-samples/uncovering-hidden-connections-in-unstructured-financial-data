@@ -3,6 +3,7 @@ import boto3
 import os
 import uuid
 import time
+import traceback
 
 from connectionsinsights.bedrock import (
     cleanJSONString,
@@ -87,8 +88,9 @@ Using the text enclosed within <document></document> tag, perform the following 
     try:
         json.loads(results)
         return results
-    except:
-        return qb_extractChunkData(text, summary, id)
+    except Exception as e:
+        print(f"Failed to parse JSON: {e}\nRaw results: {results}\n{traceback.format_exc()}")
+        return qb_extractChunkData(text, summary, main_entity_name, id)
 
 def lambda_handler(event, context):
     id = event["id"]
