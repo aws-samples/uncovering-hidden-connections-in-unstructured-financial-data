@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CognitoUserPool, CognitoUser, AuthenticationDetails } from 'amazon-cognito-identity-js';
+import { CognitoUserPool, CognitoUser, AuthenticationDetails, CognitoUserAttribute } from 'amazon-cognito-identity-js';
 import {
   Box, Card, CardContent, TextField, Button, Typography, Alert, Tabs, Tab, CircularProgress
 } from '@mui/material';
@@ -43,7 +43,7 @@ const AuthPage = ({ cognitoConfig, onAuthenticated }) => {
       return;
     }
     setLoading(true);
-    userPool.signUp(email, password, [{ Name: 'email', Value: email }], null, (err) => {
+    userPool.signUp(email, password, [new CognitoUserAttribute({ Name: 'email', Value: email })], null, (err) => {
       setLoading(false);
       if (err) {
         setError(err.message || 'Registration failed');

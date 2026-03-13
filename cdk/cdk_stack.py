@@ -1278,7 +1278,7 @@ class CdkStack(Stack):
 
             # Pre-signup Lambda for domain restriction
             if allowed_domains != "*":
-                domain_list = [d.strip() for d in allowed_domains.split(",")]
+                domain_list = [d.strip().lstrip('@').lower() for d in allowed_domains.split(",")]
                 function_name_presignup = f"{project_name}-cognito-presignup"
                 fn_cognito_presignup = _lambda.Function(self, function_name_presignup,
                     function_name=function_name_presignup,
