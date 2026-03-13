@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import Layout from './components/Layout';
@@ -8,6 +9,7 @@ import EntitiesPage from './components/EntitiesPage';
 import NewsPage from './components/NewsPage';
 import RelationshipsPage from './components/RelationshipsPage';
 import SettingsPage from './components/SettingsPage';
+import AuthPage from './components/AuthPage';
 
 const theme = createTheme({
   palette: {
@@ -95,6 +97,25 @@ function App() {
   const [apiKey, setApiKey] = useState('');
   const [newsApiKey, setNewsApiKey] = useState('');
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [idToken, setIdToken] = useState(null);
+
+  // Cognito config from env.js
+  const cognitoConfig = {
+    userPoolId: window.env?.COGNITO_USER_POOL_ID || '',
+    clientId: window.env?.COGNITO_CLIENT_ID || '',
+    region: window.env?.COGNITO_REGION || '',
+  };
+  const cognitoEnabled = !!(cognitoConfig.userPoolId && cognitoConfig.clientId);
+
+  // Set up axios interceptor to attach Cognito token
+  useEffect(() => {
+    if (!idToken) return;
+    const interceptor = axios.interceptors.request.use((config) => {
+      config.headers['Authorization'] = idToken;
+      return config;
+    });
+    return () => axios.interceptors.request.eject(interceptor);
+  }, [idToken]);
   
   // Global settings data that persists across page navigation
   const [nHops, setNHops] = useState(0);
@@ -235,9 +256,13 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Layout currentPage={currentPage} onPageChange={setCurrentPage}>
-        {renderCurrentPage()}
-      </Layout>
+      {cognitoEnabled && !idToken ? (
+        <AuthPage cognitoConfig={cognitoConfig} onAuthenticated={setIdToken} />
+      ) : (
+        <Layout currentPage={currentPage} onPageChange={setCurrentPage}>
+          {renderCurrentPage()}
+        </Layout>
+      )}
     </ThemeProvider>
   );
 }
