@@ -22,7 +22,8 @@
     "react-dom": "^18.2.0",
     "react-force-graph-2d": "^1.26.1",
     "recheck": "^4.4.5",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "amazon-cognito-identity-js": "^6.3.12"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",

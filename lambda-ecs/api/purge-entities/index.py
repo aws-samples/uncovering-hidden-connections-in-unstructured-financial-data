@@ -70,11 +70,11 @@ def handle_purge_entities():
         
         # Drop all edges first (to avoid constraint issues)
         print(f"Purging {edge_count} edges from Neptune...")
-        g.E().drop().iterate()
+        g.E().drop().toList()
         
         # Drop all vertices
         print(f"Purging {vertex_count} vertices from Neptune...")
-        g.V().drop().iterate()
+        g.V().drop().toList()
         
         # Verify deletion
         remaining_vertices = g.V().count().next()

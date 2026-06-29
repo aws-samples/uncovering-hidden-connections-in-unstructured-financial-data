@@ -24,6 +24,7 @@ from aws_cdk import (
     aws_ecr_assets as ecr_assets,
     Fn,
     custom_resources as cr,
+    aws_cognito as cognito,
 )
 from constructs import Construct
 import time
@@ -613,6 +614,42 @@ class CdkStack(Stack):
             memory_size=1024
         )
         fn_api_download_news.apply_removal_policy(RemovalPolicy.DESTROY)
+
+        # Create Lambda Functions - API - Fetch URL
+        function_name=f"{project_name}-api-fetch-url"
+        fn_api_fetch_url = _lambda.DockerImageFunction(self, function_name,
+            function_name=function_name,
+            code=_lambda.DockerImageCode.from_image_asset(
+                directory="./lambda-ecs/api/fetch-url",
+                platform=ecr_assets.Platform.LINUX_AMD64
+            ),
+            timeout=Duration.minutes(2),
+            role=role_lambda,
+            environment={
+                'S3_BUCKET': s3_news_bucket.bucket_name,
+            },
+            tracing=_lambda.Tracing.ACTIVE,
+            memory_size=1024
+        )
+        fn_api_fetch_url.apply_removal_policy(RemovalPolicy.DESTROY)
+
+        # Create Lambda Functions - API - Search News
+        function_name=f"{project_name}-api-search-news"
+        fn_api_search_news = _lambda.DockerImageFunction(self, function_name,
+            function_name=function_name,
+            code=_lambda.DockerImageCode.from_image_asset(
+                directory="./lambda-ecs/api/search-news",
+                platform=ecr_assets.Platform.LINUX_AMD64
+            ),
+            timeout=Duration.minutes(5),
+            role=role_lambda,
+            environment={
+                'S3_BUCKET': s3_news_bucket.bucket_name,
+            },
+            tracing=_lambda.Tracing.ACTIVE,
+            memory_size=1024
+        )
+        fn_api_search_news.apply_removal_policy(RemovalPolicy.DESTROY)
 
         # Create Lambda Functions - API - Trigger Download News
         function_name=f"{project_name}-api-trigger-download-news"
@@ -1230,6 +1267,85 @@ class CdkStack(Stack):
         account = apigateway.CfnAccount(self, "ApiGatewayAccount", cloud_watch_role_arn=role_api_gateway_cloudwatch.role_arn)
         account.apply_removal_policy(RemovalPolicy.DESTROY)
 
+        # Cognito Authentication (optional)
+        enable_cognito = self.node.try_get_context("enableCognito") == "true"
+        cognito_authorizer = None
+        user_pool = None
+        user_pool_client = None
+
+        if enable_cognito:
+            allowed_domains = self.node.try_get_context("allowedEmailDomains") or "*"
+
+            # Pre-signup Lambda for domain restriction
+            if allowed_domains != "*":
+                domain_list = [d.strip().lstrip('@').lower() for d in allowed_domains.split(",")]
+                function_name_presignup = f"{project_name}-cognito-presignup"
+                fn_cognito_presignup = _lambda.Function(self, function_name_presignup,
+                    function_name=function_name_presignup,
+                    runtime=_lambda.Runtime.PYTHON_3_13,
+                    handler="index.handler",
+                    code=_lambda.Code.from_inline(
+                        "import json\n"
+                        "import os\n"
+                        "ALLOWED = os.environ['ALLOWED_DOMAINS'].split(',')\n"
+                        "def handler(event, context):\n"
+                        "    email = event['request']['userAttributes'].get('email', '')\n"
+                        "    domain = email.split('@')[-1].lower()\n"
+                        "    if domain not in ALLOWED:\n"
+                        "        raise Exception(f'Email domain {domain} is not allowed to register.')\n"
+                        "    return event\n"
+                    ),
+                    environment={'ALLOWED_DOMAINS': ','.join(domain_list)},
+                    timeout=Duration.seconds(10),
+                )
+                fn_cognito_presignup.apply_removal_policy(RemovalPolicy.DESTROY)
+
+            user_pool = cognito.UserPool(self, f"{project_name}-user-pool",
+                user_pool_name=f"{project_name}-user-pool",
+                self_sign_up_enabled=True,
+                sign_in_aliases=cognito.SignInAliases(email=True),
+                auto_verify=cognito.AutoVerifiedAttrs(email=True),
+                standard_attributes=cognito.StandardAttributes(
+                    email=cognito.StandardAttribute(required=True, mutable=True)
+                ),
+                password_policy=cognito.PasswordPolicy(
+                    min_length=8,
+                    require_lowercase=True,
+                    require_uppercase=True,
+                    require_digits=True,
+                    require_symbols=False,
+                ),
+                account_recovery=cognito.AccountRecovery.EMAIL_ONLY,
+                removal_policy=RemovalPolicy.DESTROY,
+                lambda_triggers=cognito.UserPoolTriggers(
+                    pre_sign_up=fn_cognito_presignup
+                ) if allowed_domains != "*" else None,
+            )
+
+            user_pool_client = user_pool.add_client(f"{project_name}-user-pool-client",
+                user_pool_client_name=f"{project_name}-client",
+                auth_flows=cognito.AuthFlow(
+                    user_password=True,
+                    user_srp=True,
+                ),
+                generate_secret=False,
+            )
+
+            cognito_authorizer = apigateway.CognitoUserPoolsAuthorizer(
+                self, f"{project_name}-cognito-authorizer",
+                cognito_user_pools=[user_pool],
+                authorizer_name=f"{project_name}-cognito-authorizer",
+            )
+
+            output("CognitoUserPoolId", user_pool.user_pool_id)
+            output("CognitoClientId", user_pool_client.user_pool_client_id)
+
+        # Helper to build method options with optional Cognito authorizer
+        def method_options():
+            if cognito_authorizer:
+                return {"api_key_required": True, "authorizer": cognito_authorizer, "authorization_type": apigateway.AuthorizationType.COGNITO}
+            return {"api_key_required": True}
+
         # Create API Gateway
         apigateway_log_group = logs.LogGroup(self, f"{project_name}-API-Gateway-Prod-Log-Group", 
             log_group_name=f"/aws/apigateway/{project_name}-prod",
@@ -1286,39 +1402,39 @@ class CdkStack(Stack):
         
         # Create /entity resource with Lambda proxy integration
         entity_resource = api.root.add_resource('entity')
-        entity_resource.add_method('GET', apigateway.LambdaIntegration(fn_api_entities), api_key_required=True)
-        entity_resource.add_method('POST', apigateway.LambdaIntegration(fn_api_entities), api_key_required=True)
+        entity_resource.add_method('GET', apigateway.LambdaIntegration(fn_api_entities), **method_options())
+        entity_resource.add_method('POST', apigateway.LambdaIntegration(fn_api_entities), **method_options())
         entity_resource.apply_removal_policy(RemovalPolicy.DESTROY)
 
         # Create /relationships resource with Lambda proxy integration
         relationships_resource = api.root.add_resource('relationships')
-        relationships_resource.add_method('GET', apigateway.LambdaIntegration(fn_api_relationships), api_key_required=True)
+        relationships_resource.add_method('GET', apigateway.LambdaIntegration(fn_api_relationships), **method_options())
         relationships_resource.apply_removal_policy(RemovalPolicy.DESTROY)
 
         # Create /n resource with Lambda proxy integration
         n_resource = api.root.add_resource('n')
-        n_resource.add_method('GET', apigateway.LambdaIntegration(fn_api_n), api_key_required=True)
-        n_resource.add_method('POST', apigateway.LambdaIntegration(fn_api_n), api_key_required=True)
+        n_resource.add_method('GET', apigateway.LambdaIntegration(fn_api_n), **method_options())
+        n_resource.add_method('POST', apigateway.LambdaIntegration(fn_api_n), **method_options())
         n_resource.apply_removal_policy(RemovalPolicy.DESTROY)
 
         # Create /news resource with Lambda proxy integration
         news_resource = api.root.add_resource('news')
-        news_resource.add_method('GET', apigateway.LambdaIntegration(fn_api_news), api_key_required=True)
+        news_resource.add_method('GET', apigateway.LambdaIntegration(fn_api_news), **method_options())
         news_resource.apply_removal_policy(RemovalPolicy.DESTROY)
         
         # Create /reprocessnews resource with Lambda proxy integration
         reprocessnews_resource = api.root.add_resource('reprocessnews')
-        reprocessnews_resource.add_method('GET', apigateway.LambdaIntegration(fn_reprocess_news), api_key_required=True)
+        reprocessnews_resource.add_method('GET', apigateway.LambdaIntegration(fn_reprocess_news), **method_options())
         reprocessnews_resource.apply_removal_policy(RemovalPolicy.DESTROY)
 
         # Create /purge-news resource with Lambda proxy integration
         purge_news_resource = api.root.add_resource('purge-news')
-        purge_news_resource.add_method('DELETE', apigateway.LambdaIntegration(fn_api_purge_news), api_key_required=True)
+        purge_news_resource.add_method('DELETE', apigateway.LambdaIntegration(fn_api_purge_news), **method_options())
         purge_news_resource.apply_removal_policy(RemovalPolicy.DESTROY)
 
         # Create /purge-entities resource with Lambda proxy integration
         purge_entities_resource = api.root.add_resource('purge-entities')
-        purge_entities_resource.add_method('DELETE', apigateway.LambdaIntegration(fn_api_purge_entities), api_key_required=True)
+        purge_entities_resource.add_method('DELETE', apigateway.LambdaIntegration(fn_api_purge_entities), **method_options())
         purge_entities_resource.apply_removal_policy(RemovalPolicy.DESTROY)
 
         # Create /generateNews resource with Lambda integration - async
@@ -1351,30 +1467,39 @@ class CdkStack(Stack):
                 )
             ],
             api_key_required=True,
+            **({"authorizer": cognito_authorizer, "authorization_type": apigateway.AuthorizationType.COGNITO} if cognito_authorizer else {}),
         )
         generateNews_resource.apply_removal_policy(RemovalPolicy.DESTROY)
 
         # Create /downloadNews resource with Lambda integration - this will invoke another lambda async to download news
         downloadNews_resource = api.root.add_resource('downloadNews')
-        downloadNews_resource.add_method('GET', apigateway.LambdaIntegration(fn_api_trigger_download_news), api_key_required=True)
+        downloadNews_resource.add_method('GET', apigateway.LambdaIntegration(fn_api_trigger_download_news), **method_options())
         downloadNews_resource.apply_removal_policy(RemovalPolicy.DESTROY)
 
+        # Create /fetch-url resource with Lambda integration
+        fetch_url_resource = api.root.add_resource('fetch-url')
+        fetch_url_resource.add_method('POST', apigateway.LambdaIntegration(fn_api_fetch_url), **method_options())
+        fetch_url_resource.apply_removal_policy(RemovalPolicy.DESTROY)
 
+        # Create /search-news resource with Lambda integration
+        search_news_resource = api.root.add_resource('search-news')
+        search_news_resource.add_method('POST', apigateway.LambdaIntegration(fn_api_search_news), **method_options())
+        search_news_resource.apply_removal_policy(RemovalPolicy.DESTROY)
 
         # Create /presigned-url-pdf resource with Lambda integration
         presigned_url_pdf_resource = api.root.add_resource('presigned-url-pdf')
-        presigned_url_pdf_resource.add_method('POST', apigateway.LambdaIntegration(fn_api_presigned_url_pdf), api_key_required=True)
+        presigned_url_pdf_resource.add_method('POST', apigateway.LambdaIntegration(fn_api_presigned_url_pdf), **method_options())
         presigned_url_pdf_resource.apply_removal_policy(RemovalPolicy.DESTROY)
 
         # Create /presigned-url-news resource with Lambda integration
         presigned_url_news_resource = api.root.add_resource('presigned-url-news')
-        presigned_url_news_resource.add_method('POST', apigateway.LambdaIntegration(fn_api_presigned_url_news), api_key_required=True)
+        presigned_url_news_resource.add_method('POST', apigateway.LambdaIntegration(fn_api_presigned_url_news), **method_options())
         presigned_url_news_resource.apply_removal_policy(RemovalPolicy.DESTROY)
 
         # Create /processing-status resource with Lambda integration
         processing_status_resource = api.root.add_resource('processing-status')
-        processing_status_resource.add_method('GET', apigateway.LambdaIntegration(fn_api_processing_status), api_key_required=True)
-        processing_status_resource.add_method('DELETE', apigateway.LambdaIntegration(fn_api_processing_status), api_key_required=True)
+        processing_status_resource.add_method('GET', apigateway.LambdaIntegration(fn_api_processing_status), **method_options())
+        processing_status_resource.add_method('DELETE', apigateway.LambdaIntegration(fn_api_processing_status), **method_options())
         processing_status_resource.apply_removal_policy(RemovalPolicy.DESTROY)
 
         # Create API key and usage plan
@@ -1892,7 +2017,10 @@ class CdkStack(Stack):
             environment={
                 'APIKEY_ID': api_key.key_id,
                 'API_ENDPOINT': api.url,
-                'WEBAPP_S3BUCKET': s3_demo_web_app_bucket.bucket_name
+                'WEBAPP_S3BUCKET': s3_demo_web_app_bucket.bucket_name,
+                'COGNITO_USER_POOL_ID': user_pool.user_pool_id if user_pool else '',
+                'COGNITO_CLIENT_ID': user_pool_client.user_pool_client_id if user_pool_client else '',
+                'COGNITO_REGION': self.region,
             },
             tracing=_lambda.Tracing.ACTIVE,
             memory_size=1024,

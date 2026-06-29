@@ -18,7 +18,10 @@ import {
   FileText, 
   RefreshCw, 
   ExternalLink,
-  LoaderCircle
+  LoaderCircle,
+  Link,
+  Search,
+  Trash2
 } from 'lucide-react';
 import ConfirmationDialog from './ConfirmationDialog';
 
@@ -34,6 +37,10 @@ const SettingsPage = ({
   const [isGeneratingNews, setIsGeneratingNews] = useState(false);
   const [isDownloadingNews, setIsDownloadingNews] = useState(false);
   const [isReprocessingNews, setIsReprocessingNews] = useState(false);
+  const [isFetchingUrl, setIsFetchingUrl] = useState(false);
+  const [isSearchingNews, setIsSearchingNews] = useState(false);
+  const [fetchUrl, setFetchUrl] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [notification, setNotification] = useState({ open: false, message: '', severity: 'info' });
   const [confirmDialog, setConfirmDialog] = useState({ 
     open: false, 
@@ -107,6 +114,71 @@ const SettingsPage = ({
     }
     
     setTimeout(() => setIsReprocessingNews(false), 10000);
+  };
+
+  const handleFetchUrl = async () => {
+    if (!apiEndpoint || !apiKey || !fetchUrl.trim()) {
+      showNotification('API Endpoint, API Key, or URL is missing', 'error');
+      return;
+    }
+    setIsFetchingUrl(true);
+    try {
+      const res = await axios.post(`https://${apiEndpoint}/fetch-url`, { url: fetchUrl.trim() }, headers);
+      showNotification(`Article fetched: ${res.data.title}`, 'success');
+      setFetchUrl('');
+    } catch (error) {
+      const msg = error.response?.data?.error || 'Error fetching URL';
+      showNotification(msg, 'error');
+    } finally {
+      setIsFetchingUrl(false);
+    }
+  };
+
+  const handleSearchNews = async () => {
+    if (!apiEndpoint || !apiKey || !searchQuery.trim()) {
+      showNotification('API Endpoint, API Key, or search query is missing', 'error');
+      return;
+    }
+    setIsSearchingNews(true);
+    showNotification('Searching the web for news... This may take a moment.', 'info');
+    try {
+      const res = await axios.post(`https://${apiEndpoint}/search-news`, { query: searchQuery.trim(), maxResults: 5 }, headers);
+      showNotification(res.data.message, 'success');
+      setSearchQuery('');
+    } catch (error) {
+      const msg = error.response?.data?.error || 'Error searching news';
+      showNotification(msg, 'error');
+    } finally {
+      setIsSearchingNews(false);
+    }
+  };
+
+  const handlePurgeAll = async () => {
+    if (!apiEndpoint || !apiKey) {
+      showNotification('API Endpoint or API Key is missing', 'error');
+      return;
+    }
+    setConfirmDialog({
+      open: true,
+      title: 'Purge ALL Data',
+      message: 'This will permanently delete ALL news data AND all entities & relationships from the knowledge graph.\n\nThis action CANNOT be undone.\n\nAre you absolutely sure you want to continue?',
+      onConfirm: async () => {
+        setConfirmDialog({ ...confirmDialog, open: false });
+        try {
+          showNotification('Purging all data... Please wait.', 'info');
+          const [newsRes, entitiesRes] = await Promise.all([
+            axios.delete(`https://${apiEndpoint}/purge-news`, headers),
+            axios.delete(`https://${apiEndpoint}/purge-entities`, headers),
+          ]);
+          const parts = [];
+          if (newsRes.data.success) parts.push(`${newsRes.data.deleted_count} news records`);
+          if (entitiesRes.data.success) parts.push(`${entitiesRes.data.deleted_vertices} entities, ${entitiesRes.data.deleted_edges} relationships`);
+          showNotification(`Purged: ${parts.join(' and ')}.`, 'success');
+        } catch (error) {
+          showNotification('Error purging data', 'error');
+        }
+      }
+    });
   };
 
   const handlePurgeNews = async () => {
@@ -365,6 +437,80 @@ const SettingsPage = ({
 
       <Divider sx={{ my: 4 }} />
 
+      {/* Fetch URL & Web Search Section */}
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Search size={18} color="#FF9900" />
+          Fetch from Web
+        </Typography>
+        
+        <Grid container spacing={2} sx={{ mb: 2 }}>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              size="small"
+              label="Article URL"
+              value={fetchUrl}
+              onChange={(e) => setFetchUrl(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleFetchUrl()}
+              placeholder="https://example.com/news-article"
+              helperText="Paste a news article URL to scrape and process it"
+              InputProps={{
+                startAdornment: <InputAdornment position="start"><Link size={16} /></InputAdornment>,
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <Button
+                      size="small"
+                      variant="contained"
+                      startIcon={isFetchingUrl ? <LoaderCircle className="animate-spin" size={14} /> : <Download size={14} />}
+                      onClick={handleFetchUrl}
+                      disabled={isFetchingUrl || !apiEndpoint || !apiKey || !fetchUrl.trim()}
+                      sx={{ fontSize: '0.75rem' }}
+                    >
+                      {isFetchingUrl ? 'Fetching...' : 'Fetch'}
+                    </Button>
+                  </InputAdornment>
+                )
+              }}
+            />
+          </Grid>
+        </Grid>
+
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              size="small"
+              label="Web Search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearchNews()}
+              placeholder='e.g. "Tesla supply chain disruption" or "Apple quarterly earnings"'
+              helperText="Search the web for news articles to process (up to 5 results)"
+              InputProps={{
+                startAdornment: <InputAdornment position="start"><Search size={16} /></InputAdornment>,
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <Button
+                      size="small"
+                      variant="contained"
+                      startIcon={isSearchingNews ? <LoaderCircle className="animate-spin" size={14} /> : <Search size={14} />}
+                      onClick={handleSearchNews}
+                      disabled={isSearchingNews || !apiEndpoint || !apiKey || !searchQuery.trim()}
+                      sx={{ fontSize: '0.75rem' }}
+                    >
+                      {isSearchingNews ? 'Searching...' : 'Search'}
+                    </Button>
+                  </InputAdornment>
+                )
+              }}
+            />
+          </Grid>
+        </Grid>
+      </Box>
+
+      <Divider sx={{ my: 4 }} />
+
       {/* Administration Section */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -382,6 +528,22 @@ const SettingsPage = ({
         </Alert>
         
         <Grid container spacing={2}>
+          <Grid item xs={12}>
+            <Button
+              fullWidth
+              variant="contained"
+              color="error"
+              startIcon={<Trash2 size={18} />}
+              onClick={handlePurgeAll}
+              disabled={!apiEndpoint || !apiKey}
+              sx={{ py: 1.5 }}
+            >
+              Purge All Data
+            </Button>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+              Permanently deletes all news data AND all entities & relationships
+            </Typography>
+          </Grid>
           <Grid item xs={12} md={6}>
             <Button
               fullWidth
